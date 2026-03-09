@@ -1,6 +1,10 @@
-import MainLayout from "../../Components/layout/MainLayout";
-import AdminView  from "./AdminView";
-import StaffView  from "./StaffView";
+import MainLayout      from "../../Components/layout/MainLayout";
+import AdminView       from "./AdminView";
+import StaffView       from "./StaffView";
+import BrowseInventory from "../inventory/BrowseInventory";
+import MyBorrows       from "../inventory/MyBorrows";
+import StorageMap      from "../storage/StorageMap";
+import UserManagement  from "../users/UserManagement";
 
 export default function DashboardPage() {
   const role    = localStorage.getItem("role") || "staff";
@@ -8,24 +12,30 @@ export default function DashboardPage() {
 
   return (
     <MainLayout defaultPage="dashboard">
-      {(activePage) => (
+      {(activePage, setActivePage) => (
         <>
           {/* Dashboard home */}
-          {activePage === "dashboard" && (isAdmin ? <AdminView /> : <StaffView />)}
+          {activePage === "dashboard" && (
+            isAdmin ? <AdminView /> : <StaffView onNavigate={setActivePage} />
+          )}
 
-          {/* Placeholder pages – replace with real feature pages later */}
-          {activePage === "inventory" && <PlaceholderPage title="Inventory" icon="📦" />}
-          {activePage === "borrow"    && <PlaceholderPage title={isAdmin ? "Borrow / Return" : "My Borrows"} icon="📤" />}
-          {activePage === "users"     && isAdmin && <PlaceholderPage title="User Management" icon="👥" />}
-          {activePage === "storage"   && <PlaceholderPage title="Storage" icon="🗄️" />}
-          {activePage === "audit"     && isAdmin && <PlaceholderPage title="Audit Log" icon="📋" />}
+          {/* Shared features */}
+          {activePage === "inventory" && <BrowseInventory />}
+          {activePage === "storage"   && <StorageMap />}
+
+          {/* Staff only */}
+          {activePage === "borrow" && !isAdmin && <MyBorrows />}
+
+          {/* Admin only */}
+          {activePage === "users"  && isAdmin && <UserManagement />}
+          {activePage === "borrow" && isAdmin && <PlaceholderPage title="Borrow / Return Management" icon="📤" />}
+          {activePage === "audit"  && isAdmin && <PlaceholderPage title="Audit Log"                  icon="📋" />}
         </>
       )}
     </MainLayout>
   );
 }
 
-/* Placeholder for pages not yet built */
 function PlaceholderPage({ title, icon }) {
   return (
     <div style={{
@@ -38,7 +48,7 @@ function PlaceholderPage({ title, icon }) {
       <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "22px", fontWeight: 700, color: "var(--text-primary)" }}>
         {title}
       </div>
-      <div style={{ fontSize: "14px" }}>This page is under construction. Coming soon.</div>
+      <div style={{ fontSize: "14px" }}>Coming up next!</div>
     </div>
   );
 }

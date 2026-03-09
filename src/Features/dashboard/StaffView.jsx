@@ -1,15 +1,18 @@
+import { useState } from "react";
 import StatusBadge from "../../Components/common/StatusBadge";
+import BorrowForm  from "../inventory/BorrowForm";
+import ReturnForm  from "../inventory/ReturnForm";
 
 const AVAILABLE = [
-  { id: 1, name: "Oscilloscope",   code: "EQ-002", qty: 3, place: "Cupboard B – Shelf 2", emoji: "📡" },
-  { id: 2, name: "Raspberry Pi 4", code: "CM-005", qty: 5, place: "Cupboard A – Shelf 1", emoji: "💻" },
-  { id: 3, name: "Multimeter",     code: "EQ-004", qty: 4, place: "Cupboard C – Shelf 1", emoji: "⚡" },
-  { id: 4, name: "Breadboard",     code: "CM-006", qty: 10, place: "Cupboard A – Shelf 2", emoji: "🔲" },
+  { id: 1, name: "Oscilloscope",   code: "EQ-002", qty: 3,  place: "Cupboard B – Shelf 2", emoji: "📡", status: "instore", description: "4-channel 100MHz digital oscilloscope." },
+  { id: 2, name: "Raspberry Pi 4", code: "CM-005", qty: 5,  place: "Cupboard A – Shelf 1", emoji: "💻", status: "instore", description: "Raspberry Pi 4 Model B 4GB." },
+  { id: 3, name: "Multimeter",     code: "EQ-004", qty: 4,  place: "Cupboard C – Shelf 1", emoji: "⚡", status: "instore", description: "Digital multimeter for voltage, current and resistance." },
+  { id: 4, name: "Breadboard",     code: "CM-006", qty: 10, place: "Cupboard A – Shelf 2", emoji: "🔲", status: "instore", description: "830-point solderless breadboard." },
 ];
 
-const MY_BORROWS = [
-  { id: 1, item: "Soldering Iron", qty: 1, borrowed: "Mar 05, 2026", due: "Mar 12, 2026" },
-  { id: 2, item: "Arduino Mega",   qty: 2, borrowed: "Mar 07, 2026", due: "Mar 14, 2026" },
+const INITIAL_BORROWS = [
+  { id: 1, itemName: "Soldering Iron", code: "EQ-001", emoji: "🔧", borrowerName: "Staff User", contact: "+94 77 123 4567", qty: 1, borrowDate: "Mar 05, 2026", dueDate: "2026-03-12", dueDateLabel: "Mar 12, 2026", status: "borrowed", notes: "" },
+  { id: 2, itemName: "Arduino Mega",   code: "CM-003", emoji: "🔌", borrowerName: "Staff User", contact: "+94 77 123 4567", qty: 2, borrowDate: "Mar 07, 2026", dueDate: "2026-03-14", dueDateLabel: "Mar 14, 2026", status: "borrowed", notes: "For robotics project" },
 ];
 
 const MY_ACTIVITY = [
@@ -24,14 +27,27 @@ const CUPBOARDS = [
   { name: "Cupboard C", places: ["Shelf 1"],                       color: "#fef3c7" },
 ];
 
-const QUICK_ACTIONS = [
-  { icon: "📦", label: "Browse Items"  },
-  { icon: "📤", label: "Borrow Item"   },
-  { icon: "↩️", label: "Return Item"   },
-  { icon: "🗄️", label: "View Storage"  },
-];
+export default function StaffView({ onNavigate }) {
+  const [borrows,      setBorrows]      = useState(INITIAL_BORROWS);
+  const [borrowItem,   setBorrowItem]   = useState(null);
+  const [returnBorrow, setReturnBorrow] = useState(null);
 
-export default function StaffView() {
+  const activeBorrows = borrows.filter(b => b.status === "borrowed");
+
+  const handleReturnSuccess = ({ borrow, condition, notes }) => {
+    setBorrows(prev => prev.map(b =>
+      b.id === borrow.id ? { ...b, status: "returned", condition, notes } : b
+    ));
+    setReturnBorrow(null);
+  };
+
+  const QUICK_ACTIONS = [
+    { icon: "📦", label: "Browse Items", action: () => onNavigate("inventory") },
+    { icon: "📤", label: "Borrow Item",  action: () => onNavigate("inventory") },
+    { icon: "↩️", label: "Return Item",  action: () => onNavigate("borrow")    },
+    { icon: "🗄️", label: "View Storage", action: () => onNavigate("storage")   },
+  ];
+
   return (
     <>
       {/* Page Greeting */}
@@ -42,18 +58,18 @@ export default function StaffView() {
         <h1 className="page-title">Good morning, <span>Team.</span></h1>
       </div>
 
-      {/* Stats */}
+      {/* Stats — all clickable */}
       <div className="stats-grid">
-        <StatCard color="#6366f1" iconBg="#ede9fe" trend="trend-up" trendLabel="available" value="48" label="Total Items">
+        <StatCard color="#6366f1" iconBg="#ede9fe" trend="trend-up" trendLabel="available" value="48" label="Total Items" onClick={() => onNavigate("inventory")}>
           <BoxIcon color="#6366f1" />
         </StatCard>
-        <StatCard color="#f59e0b" iconBg="#fef3c7" trend="trend-neutral" trendLabel="my borrows" value="2" label="Items I Borrowed">
+        <StatCard color="#f59e0b" iconBg="#fef3c7" trend="trend-neutral" trendLabel="my borrows" value={activeBorrows.length} label="Items I Borrowed" onClick={() => onNavigate("borrow")}>
           <ArrowIcon color="#f59e0b" />
         </StatCard>
-        <StatCard color="#10b981" iconBg="#d1fae5" trend="trend-up" trendLabel="active" value="3" label="Cupboards">
+        <StatCard color="#10b981" iconBg="#d1fae5" trend="trend-up" trendLabel="active" value="3" label="Cupboards" onClick={() => onNavigate("storage")}>
           <StorageIcon color="#10b981" />
         </StatCard>
-        <StatCard color="#ef4444" iconBg="#fee2e2" trend="trend-down" trendLabel="due soon" value="1" label="Due This Week">
+        <StatCard color="#ef4444" iconBg="#fee2e2" trend="trend-down" trendLabel="due soon" value="1" label="Due This Week" onClick={() => onNavigate("borrow")}>
           <AlertIcon color="#ef4444" />
         </StatCard>
       </div>
@@ -68,13 +84,11 @@ export default function StaffView() {
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">Available Inventory</span>
-              <button className="panel-action">Browse All →</button>
+              <button className="panel-action" onClick={() => onNavigate("inventory")}>Browse All →</button>
             </div>
             <table className="data-table">
               <thead>
-                <tr>
-                  <th>Item</th><th>Qty</th><th>Location</th><th>Action</th>
-                </tr>
+                <tr><th>Item</th><th>Qty</th><th>Location</th><th>Action</th></tr>
               </thead>
               <tbody>
                 {AVAILABLE.map(item => (
@@ -90,7 +104,11 @@ export default function StaffView() {
                     </td>
                     <td style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700 }}>{item.qty}</td>
                     <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{item.place}</td>
-                    <td><button className="action-btn btn-borrow">Borrow</button></td>
+                    <td>
+                      <button className="action-btn btn-borrow" onClick={() => setBorrowItem(item)}>
+                        Borrow
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -101,25 +119,27 @@ export default function StaffView() {
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">My Active Borrows</span>
-              <button className="panel-action">History →</button>
+              <button className="panel-action" onClick={() => onNavigate("borrow")}>History →</button>
             </div>
-            {MY_BORROWS.length === 0 ? (
+            {activeBorrows.length === 0 ? (
               <div style={{ padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
                 No active borrows
               </div>
-            ) : MY_BORROWS.map(b => (
+            ) : activeBorrows.map(b => (
               <div className="borrow-item" key={b.id}>
-                <div style={{ fontSize: "22px" }}>📤</div>
+                <div style={{ fontSize: "22px" }}>{b.emoji}</div>
                 <div className="borrow-info">
                   <div className="borrow-name">
-                    {b.item}
+                    {b.itemName}
                     <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "12px" }}> × {b.qty}</span>
                   </div>
                   <div className="borrow-detail">
-                    Borrowed {b.borrowed} · Due <strong style={{ color: "#f59e0b" }}>{b.due}</strong>
+                    Borrowed {b.borrowDate} · Due <strong style={{ color: "#f59e0b" }}>{b.dueDateLabel}</strong>
                   </div>
                 </div>
-                <button className="action-btn btn-return">Return</button>
+                <button className="action-btn btn-return" onClick={() => setReturnBorrow(b)}>
+                  Return
+                </button>
               </div>
             ))}
           </div>
@@ -129,14 +149,14 @@ export default function StaffView() {
         {/* Right col */}
         <div className="col">
 
-          {/* Quick Actions */}
+          {/* Quick Actions — all wired */}
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">Quick Actions</span>
             </div>
             <div className="quick-grid">
               {QUICK_ACTIONS.map((a, i) => (
-                <div className="quick-btn" key={i}>
+                <div className="quick-btn" key={i} onClick={a.action} style={{ cursor: "pointer" }}>
                   <div className="quick-icon">{a.icon}</div>
                   <span className="quick-label">{a.label}</span>
                 </div>
@@ -148,6 +168,7 @@ export default function StaffView() {
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">My Activity</span>
+              <button className="panel-action" onClick={() => onNavigate("borrow")}>View All →</button>
             </div>
             {MY_ACTIVITY.map((a, i) => (
               <div className="activity-item" key={i}>
@@ -160,14 +181,22 @@ export default function StaffView() {
             ))}
           </div>
 
-          {/* Storage Map */}
+          {/* Storage Locations — clickable cards */}
           <div className="panel">
             <div className="panel-header">
               <span className="panel-title">Storage Locations</span>
+              <button className="panel-action" onClick={() => onNavigate("storage")}>View Map →</button>
             </div>
             <div className="storage-list">
               {CUPBOARDS.map((c, i) => (
-                <div className="storage-card" key={i} style={{ background: c.color, borderColor: "transparent" }}>
+                <div
+                  key={i}
+                  className="storage-card"
+                  onClick={() => onNavigate("storage")}
+                  style={{ background: c.color, borderColor: "transparent", cursor: "pointer", transition: "opacity 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.75"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                >
                   <div className="storage-top">
                     <span className="storage-name">🗄️ {c.name}</span>
                     <span className="storage-count">{c.places.length} places</span>
@@ -188,14 +217,35 @@ export default function StaffView() {
 
         </div>
       </div>
+
+      {/* ── Borrow Form Modal ── */}
+      {borrowItem && (
+        <BorrowForm
+          item={borrowItem}
+          onClose={() => setBorrowItem(null)}
+          onSuccess={() => {
+            setBorrowItem(null);
+            // TODO: POST /api/borrows → refresh data
+          }}
+        />
+      )}
+
+      {/* ── Return Form Modal ── */}
+      {returnBorrow && (
+        <ReturnForm
+          borrow={returnBorrow}
+          onClose={() => setReturnBorrow(null)}
+          onSuccess={handleReturnSuccess}
+        />
+      )}
     </>
   );
 }
 
 /* ── Mini stat card ── */
-function StatCard({ color, iconBg, trend, trendLabel, value, label, children }) {
+function StatCard({ color, iconBg, trend, trendLabel, value, label, onClick, children }) {
   return (
-    <div className="stat-card">
+    <div className="stat-card" onClick={onClick} style={{ cursor: "pointer" }}>
       <div className="stat-card-bg" style={{ background: color }} />
       <div className="stat-card-top">
         <div className="stat-icon" style={{ background: iconBg }}>{children}</div>

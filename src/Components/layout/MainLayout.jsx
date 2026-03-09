@@ -17,7 +17,7 @@ export default function MainLayout({ children, defaultPage = "dashboard" }) {
 
   // Allow children to receive activePage so they can render the right content
   const childWithPage = typeof children === "function"
-    ? children(activePage)
+    ? children(activePage, setActivePage)
     : children;
 
   return (
