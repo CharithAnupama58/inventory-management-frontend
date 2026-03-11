@@ -1,4 +1,6 @@
 import { useState } from "react";
+import BorrowService from "../../services/borrowService";
+import { useAuth } from "../../context/AuthContext";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -61,17 +63,16 @@ function SuccessScreen({ item, formData, onClose }) {
         Your request has been recorded successfully.
       </div>
 
-      {/* Summary card */}
       <div style={{
         background: "var(--surface2)", borderRadius: "12px",
         padding: "18px", textAlign: "left", marginBottom: "24px"
       }}>
         {[
-          { label: "Item",          value: `${item.emoji} ${item.name} (${item.code})` },
-          { label: "Quantity",      value: `${formData.quantity} unit(s)` },
-          { label: "Borrower",      value: formData.borrowerName },
-          { label: "Contact",       value: formData.contact },
-          { label: "Borrow Date",   value: formData.borrowDate },
+          { label: "Item",            value: `${item.emoji} ${item.name} (${item.code})` },
+          { label: "Quantity",        value: `${formData.quantity} unit(s)` },
+          { label: "Borrower",        value: formData.borrowerName },
+          { label: "Contact",         value: formData.contact },
+          { label: "Borrow Date",     value: formData.borrowDate },
           { label: "Expected Return", value: formData.returnDate },
         ].map((row, i) => (
           <div key={i} style={{
@@ -108,13 +109,15 @@ function SuccessScreen({ item, formData, onClose }) {
 
 /* ─── Main Borrow Form Modal ─── */
 export default function BorrowForm({ item, onClose, onSuccess }) {
-  const [step,      setStep]    = useState(1); // 1 = form, 2 = confirm, 3 = success
-  const [loading,   setLoading] = useState(false);
-  const [errors,    setErrors]  = useState({});
+  const { user } = useAuth();
+  const [step,    setStep]    = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [errors,  setErrors]  = useState({});
+  const [apiError, setApiError] = useState("");
 
   const [formData, setFormData] = useState({
-    borrowerName: "",
-    contact:      "",
+    borrowerName: user?.name || "",   // pre-fill from logged-in user
+    contact:      user?.email || "",  // pre-fill from logged-in user
     quantity:     1,
     borrowDate:   today,
     returnDate:   "",
@@ -126,32 +129,47 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: "" }));
   };
 
-  /* Validation */
+  /* Validation — use item.quantity (real API field) */
   const validate = () => {
     const e = {};
-    if (!formData.borrowerName.trim())    e.borrowerName = "Borrower name is required";
-    if (!formData.contact.trim())         e.contact      = "Contact details are required";
-    if (formData.quantity < 1)            e.quantity     = "Quantity must be at least 1";
-    if (formData.quantity > item.qty)     e.quantity     = `Only ${item.qty} available`;
-    if (!formData.returnDate)             e.returnDate   = "Expected return date is required";
-    if (formData.returnDate <= today)     e.returnDate   = "Return date must be after today";
+    if (!formData.borrowerName.trim()) e.borrowerName = "Borrower name is required";
+    if (!formData.contact.trim())      e.contact      = "Contact details are required";
+    if (formData.quantity < 1)         e.quantity     = "Quantity must be at least 1";
+    if (formData.quantity > item.quantity) e.quantity = `Only ${item.quantity} available`;
+    if (!formData.returnDate)          e.returnDate   = "Expected return date is required";
+    if (formData.returnDate <= today)  e.returnDate   = "Return date must be after today";
     return e;
   };
 
   const handleNext = () => {
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
+    setApiError("");
     setStep(2);
   };
 
-  const handleSubmit = () => {
+  /* ── Real API call ── */
+  const handleSubmit = async () => {
     setLoading(true);
-    // Simulate API call — replace with real POST /api/borrows later
-    setTimeout(() => {
-      setLoading(false);
+    setApiError("");
+    try {
+      await BorrowService.create({
+        item_id:             item.id,
+        quantity:            formData.quantity,
+        borrower_name:       formData.borrowerName,
+        contact:             formData.contact,
+        borrow_date:         formData.borrowDate,
+        expected_return_date: formData.returnDate,
+        notes:               formData.notes || null,
+      });
       setStep(3);
-      onSuccess && onSuccess({ item, formData });
-    }, 1200);
+      onSuccess && onSuccess();
+    } catch (err) {
+      const msg = err.response?.data?.message || "Failed to submit borrow request. Please try again.";
+      setApiError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!item) return null;
@@ -207,11 +225,10 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
                   {step === 1 ? "Borrow Item" : "Confirm Borrow"}
                 </div>
                 <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-                  {item.name} · {item.code} · {item.qty} available
+                  {item.name} · {item.code} · {item.quantity} available
                 </div>
               </div>
 
-              {/* Step indicator */}
               <div style={{ display: "flex", gap: "6px" }}>
                 {[1, 2].map(s => (
                   <div key={s} style={{
@@ -275,7 +292,7 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
                       fontSize: "22px", color: "var(--text-primary)"
                     }}>{formData.quantity}</div>
                     <button
-                      onClick={() => set("quantity", Math.min(item.qty, formData.quantity + 1))}
+                      onClick={() => set("quantity", Math.min(item.quantity, formData.quantity + 1))}
                       style={{
                         width: "38px", height: "38px", borderRadius: "9px",
                         border: "1.5px solid var(--border)", background: "var(--surface2)",
@@ -286,7 +303,7 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
                     >+</button>
                   </div>
                   <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "6px", textAlign: "center" }}>
-                    Max: {item.qty} available
+                    Max: {item.quantity} available
                   </div>
                 </Field>
 
@@ -318,10 +335,7 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
 
                 <Field label="Notes (optional)">
                   <textarea
-                    style={{
-                      ...inputStyle(false),
-                      resize: "none", height: "80px", lineHeight: 1.6
-                    }}
+                    style={{ ...inputStyle(false), resize: "none", height: "80px", lineHeight: 1.6 }}
                     placeholder="Any additional notes..."
                     value={formData.notes}
                     onChange={e => set("notes", e.target.value)}
@@ -330,29 +344,18 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
                   />
                 </Field>
 
-                {/* Footer */}
                 <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-                  <button
-                    onClick={onClose}
-                    style={{
-                      flex: 1, padding: "12px",
-                      background: "var(--surface2)",
-                      border: "1.5px solid var(--border)",
-                      borderRadius: "10px", cursor: "pointer",
-                      fontFamily: "'DM Sans',sans-serif",
-                      fontSize: "13px", color: "var(--text-secondary)"
-                    }}
-                  >Cancel</button>
-                  <button
-                    onClick={handleNext}
-                    style={{
-                      flex: 2, padding: "12px",
-                      background: "#0f0f1a", color: "#fff",
-                      border: "none", borderRadius: "10px",
-                      fontFamily: "'Syne',sans-serif", fontWeight: 700,
-                      fontSize: "13px", letterSpacing: "0.8px",
-                      cursor: "pointer", transition: "background 0.15s"
-                    }}
+                  <button onClick={onClose} style={{
+                    flex: 1, padding: "12px", background: "var(--surface2)",
+                    border: "1.5px solid var(--border)", borderRadius: "10px", cursor: "pointer",
+                    fontFamily: "'DM Sans',sans-serif", fontSize: "13px", color: "var(--text-secondary)"
+                  }}>Cancel</button>
+                  <button onClick={handleNext} style={{
+                    flex: 2, padding: "12px", background: "#0f0f1a", color: "#fff",
+                    border: "none", borderRadius: "10px", fontFamily: "'Syne',sans-serif",
+                    fontWeight: 700, fontSize: "13px", letterSpacing: "0.8px",
+                    cursor: "pointer", transition: "background 0.15s"
+                  }}
                     onMouseEnter={e => e.currentTarget.style.background = "#6366f1"}
                     onMouseLeave={e => e.currentTarget.style.background = "#0f0f1a"}
                   >Review →</button>
@@ -367,18 +370,15 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
                   Please review the details before confirming.
                 </p>
 
-                <div style={{
-                  background: "var(--surface2)", borderRadius: "12px",
-                  padding: "18px", marginBottom: "20px"
-                }}>
+                <div style={{ background: "var(--surface2)", borderRadius: "12px", padding: "18px", marginBottom: "20px" }}>
                   {[
-                    { label: "Item",             value: `${item.emoji} ${item.name}` },
-                    { label: "Code",             value: item.code },
-                    { label: "Quantity",         value: `${formData.quantity} unit(s)` },
-                    { label: "Borrower",         value: formData.borrowerName },
-                    { label: "Contact",          value: formData.contact },
-                    { label: "Borrow Date",      value: formData.borrowDate },
-                    { label: "Expected Return",  value: formData.returnDate },
+                    { label: "Item",            value: `${item.emoji} ${item.name}` },
+                    { label: "Code",            value: item.code },
+                    { label: "Quantity",        value: `${formData.quantity} unit(s)` },
+                    { label: "Borrower",        value: formData.borrowerName },
+                    { label: "Contact",         value: formData.contact },
+                    { label: "Borrow Date",     value: formData.borrowDate },
+                    { label: "Expected Return", value: formData.returnDate },
                     ...(formData.notes ? [{ label: "Notes", value: formData.notes }] : []),
                   ].map((row, i, arr) => (
                     <div key={i} style={{
@@ -387,17 +387,23 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
                       borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
                       gap: "12px"
                     }}>
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.7px", flexShrink: 0 }}>
-                        {row.label}
-                      </span>
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", textAlign: "right" }}>
-                        {row.value}
-                      </span>
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.7px", flexShrink: 0 }}>{row.label}</span>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", textAlign: "right" }}>{row.value}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* Warning note */}
+                {/* API error */}
+                {apiError && (
+                  <div style={{
+                    background: "rgba(239,68,68,0.1)", border: "1.5px solid rgba(239,68,68,0.3)",
+                    borderRadius: "10px", padding: "12px 14px", marginBottom: "16px",
+                    fontSize: "13px", color: "#ef4444", display: "flex", alignItems: "center", gap: "8px"
+                  }}>
+                    ⚠️ {apiError}
+                  </div>
+                )}
+
                 <div style={{
                   display: "flex", gap: "10px", alignItems: "flex-start",
                   background: "#fef3c7", border: "1px solid #fde68a",
@@ -410,17 +416,11 @@ export default function BorrowForm({ item, onClose, onSuccess }) {
                 </div>
 
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    onClick={() => setStep(1)}
-                    style={{
-                      flex: 1, padding: "12px",
-                      background: "var(--surface2)",
-                      border: "1.5px solid var(--border)",
-                      borderRadius: "10px", cursor: "pointer",
-                      fontFamily: "'DM Sans',sans-serif",
-                      fontSize: "13px", color: "var(--text-secondary)"
-                    }}
-                  >← Back</button>
+                  <button onClick={() => setStep(1)} style={{
+                    flex: 1, padding: "12px", background: "var(--surface2)",
+                    border: "1.5px solid var(--border)", borderRadius: "10px", cursor: "pointer",
+                    fontFamily: "'DM Sans',sans-serif", fontSize: "13px", color: "var(--text-secondary)"
+                  }}>← Back</button>
 
                   <button
                     onClick={handleSubmit}

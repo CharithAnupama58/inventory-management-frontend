@@ -1,34 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import StatusBadge from "../../Components/common/StatusBadge";
 import ReturnForm  from "./ReturnForm";
-
-/* ─── Mock Data (replace with GET /api/borrows?user=me later) ─── */
-const INITIAL_BORROWS = [
-  {
-    id: 1, itemName: "Soldering Iron", code: "EQ-001", emoji: "🔧",
-    borrowerName: "Staff User", contact: "+94 77 123 4567",
-    qty: 1, borrowDate: "Mar 05, 2026", dueDate: "2026-03-12",
-    dueDateLabel: "Mar 12, 2026", status: "borrowed", notes: ""
-  },
-  {
-    id: 2, itemName: "Arduino Mega", code: "CM-003", emoji: "🔌",
-    borrowerName: "Staff User", contact: "+94 77 123 4567",
-    qty: 2, borrowDate: "Mar 07, 2026", dueDate: "2026-03-14",
-    dueDateLabel: "Mar 14, 2026", status: "borrowed", notes: "For robotics project"
-  },
-  {
-    id: 3, itemName: "Oscilloscope", code: "EQ-002", emoji: "📡",
-    borrowerName: "Staff User", contact: "+94 77 123 4567",
-    qty: 1, borrowDate: "Feb 20, 2026", dueDate: "2026-02-28",
-    dueDateLabel: "Feb 28, 2026", status: "returned", notes: "", returnDate: "Feb 27, 2026", condition: "good"
-  },
-  {
-    id: 4, itemName: "Heat Gun", code: "EQ-008", emoji: "🌡️",
-    borrowerName: "Staff User", contact: "+94 77 123 4567",
-    qty: 1, borrowDate: "Feb 10, 2026", dueDate: "2026-02-15",
-    dueDateLabel: "Feb 15, 2026", status: "returned", notes: "", returnDate: "Feb 14, 2026", condition: "fair"
-  },
-];
+import BorrowService from "../../services/borrowService";
 
 const TABS = [
   { id: "active",   label: "Active",   icon: "📤" },
@@ -38,19 +11,73 @@ const TABS = [
 
 const CONDITION_COLORS = { good: "#10b981", fair: "#f59e0b", damaged: "#ef4444" };
 
+const getEmoji = (name = "") => {
+  const n = name.toLowerCase();
+  if (n.includes("solder"))       return "🔧";
+  if (n.includes("oscilloscope")) return "📡";
+  if (n.includes("arduino"))      return "🔌";
+  if (n.includes("multimeter"))   return "⚡";
+  if (n.includes("raspberry"))    return "💻";
+  if (n.includes("breadboard"))   return "🔲";
+  if (n.includes("wire"))         return "✂️";
+  if (n.includes("heat"))         return "🌡️";
+  if (n.includes("logic"))        return "🔍";
+  if (n.includes("power"))        return "🔋";
+  if (n.includes("esp"))          return "📶";
+  if (n.includes("crimp"))        return "🔩";
+  return "📦";
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+};
+
 function isDue(dueDate) {
   return new Date(dueDate) < new Date();
 }
 
 function daysLeft(dueDate) {
-  const diff = Math.ceil((new Date(dueDate) - new Date()) / (1000 * 60 * 60 * 24));
-  return diff;
+  return Math.ceil((new Date(dueDate) - new Date()) / (1000 * 60 * 60 * 24));
 }
 
 export default function MyBorrows() {
-  const [borrows,    setBorrows]    = useState(INITIAL_BORROWS);
+  const [borrows,    setBorrows]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState("");
   const [activeTab,  setActiveTab]  = useState("active");
   const [returnItem, setReturnItem] = useState(null);
+
+  // ── Fetch my borrows from real API ──
+  const fetchBorrows = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const response = await BorrowService.getMyBorrows();
+      // Map API fields to what the UI expects
+      const list = (response.data || []).map(b => ({
+        ...b,
+        emoji:       getEmoji(b.item?.name || ""),
+        itemName:    b.item?.name || "Unknown Item",
+        code:        b.item?.code || "—",
+        qty:         b.quantity,
+        borrowDate:  formatDate(b.borrow_date),
+        dueDate:     b.expected_return_date,
+        dueDateLabel: formatDate(b.expected_return_date),
+        returnDate:  formatDate(b.actual_return_date),
+        condition:   b.return_condition || null,
+      }));
+      setBorrows(list);
+    } catch (err) {
+      setError("Failed to load your borrows. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBorrows();
+  }, [fetchBorrows]);
 
   const filtered = borrows.filter(b => {
     if (activeTab === "active")   return b.status === "borrowed";
@@ -58,18 +85,36 @@ export default function MyBorrows() {
     return true;
   });
 
-  const activeCnt  = borrows.filter(b => b.status === "borrowed").length;
+  const activeCnt   = borrows.filter(b => b.status === "borrowed").length;
   const returnedCnt = borrows.filter(b => b.status === "returned").length;
   const overdueCnt  = borrows.filter(b => b.status === "borrowed" && isDue(b.dueDate)).length;
 
-  const handleReturnSuccess = ({ borrow, condition, notes }) => {
-    setBorrows(prev => prev.map(b =>
-      b.id === borrow.id
-        ? { ...b, status: "returned", condition, notes, returnDate: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) }
-        : b
-    ));
+  // ── After successful return → refresh list ──
+  const handleReturnSuccess = () => {
     setReturnItem(null);
+    fetchBorrows();
   };
+
+  // ── Loading state ──
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: "16px", color: "var(--text-muted)" }}>
+      <div style={{ width: "36px", height: "36px", border: "3px solid var(--border)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <span style={{ fontSize: "13px" }}>Loading your borrows...</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+
+  // ── Error state ──
+  if (error) return (
+    <div style={{ textAlign: "center", padding: "64px 20px", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: "40px", marginBottom: "12px" }}>⚠️</div>
+      <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "8px" }}>Failed to load</div>
+      <div style={{ fontSize: "13px", marginBottom: "20px" }}>{error}</div>
+      <button onClick={fetchBorrows} style={{ padding: "10px 24px", borderRadius: "9px", background: "#0f0f1a", color: "#fff", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", fontSize: "13px" }}>
+        Try Again
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease forwards" }}>
@@ -83,9 +128,9 @@ export default function MyBorrows() {
       {/* Summary Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", marginBottom: "24px" }}>
         {[
-          { label: "Active Borrows", value: activeCnt,  color: "#6366f1", bg: "#ede9fe", icon: "📤" },
-          { label: "Overdue",        value: overdueCnt, color: "#ef4444", bg: "#fee2e2", icon: "⚠️" },
-          { label: "Returned",       value: returnedCnt,color: "#10b981", bg: "#d1fae5", icon: "↩️" },
+          { label: "Active Borrows", value: activeCnt,   color: "#6366f1", bg: "#ede9fe", icon: "📤" },
+          { label: "Overdue",        value: overdueCnt,  color: "#ef4444", bg: "#fee2e2", icon: "⚠️" },
+          { label: "Returned",       value: returnedCnt, color: "#10b981", bg: "#d1fae5", icon: "↩️" },
         ].map((s, i) => (
           <div key={i} style={{
             background: "var(--surface)", border: "1.5px solid var(--border)",
@@ -167,7 +212,6 @@ export default function MyBorrows() {
 
               <div style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: "16px" }}>
 
-                {/* Emoji icon */}
                 <div style={{
                   width: "48px", height: "48px", borderRadius: "12px",
                   background: overdue ? "#fee2e2" : "var(--surface2)",
@@ -175,7 +219,6 @@ export default function MyBorrows() {
                   justifyContent: "center", flexShrink: 0
                 }}>{borrow.emoji}</div>
 
-                {/* Main info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px", flexWrap: "wrap" }}>
                     <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "15px", color: "var(--text-primary)" }}>
@@ -225,7 +268,6 @@ export default function MyBorrows() {
                   )}
                 </div>
 
-                {/* Action */}
                 {borrow.status === "borrowed" && (
                   <button
                     onClick={() => setReturnItem(borrow)}

@@ -50,14 +50,16 @@ export default function BrowseInventory() {
       if (searchValue)              params.search      = searchValue;
 
       const response = await ItemService.getAll(params);
-      const mapped = (response.data || []).map(item => ({
-        ...item,
-        emoji:    getEmoji(item.name),
-        place:    item.place?.name
-                    ? `${item.cupboard?.name} – ${item.place.name}`
-                    : item.cupboard?.name || "—",
-        cupboard: item.cupboard?.name || "—",
-      }));
+      const mapped = (response.data || []).map(item => {
+        const cupboardName = item.place?.cupboard?.name || "—";
+        const shelfName    = item.place?.name || null;
+        return {
+          ...item,
+          emoji:    getEmoji(item.name),
+          place:    shelfName ? `${cupboardName} – ${shelfName}` : cupboardName,
+          cupboard: cupboardName,
+        };
+      });
       setItems(mapped);
     } catch (err) {
       setError("Failed to load items. Please try again.");
@@ -97,11 +99,11 @@ export default function BrowseInventory() {
     const matchSearch   = item.name.toLowerCase().includes(search.toLowerCase()) ||
                           item.code.toLowerCase().includes(search.toLowerCase());
     const matchStatus   = statusF   === "all" || item.status   === statusF;
-    const matchCupboard = cupboardF === "all" || item.cupboard === cupboardF;
+    const matchCupboard = cupboardF === "all" || String(item.place?.cupboard?.id) === String(cupboardF);
     return matchSearch && matchStatus && matchCupboard;
   }), [items, search, statusF, cupboardF]);
 
-  const canBorrow = (item) => item.status === "instore" && item.quantity > 0;
+  const canBorrow = (item) => item.quantity > 0 && item.status !== "damaged" && item.status !== "missing";
 
   // ── After successful borrow → refresh items ──
   const handleBorrowSuccess = () => {
@@ -182,7 +184,7 @@ export default function BrowseInventory() {
           fontSize: "13px", fontFamily: "'DM Sans',sans-serif", outline: "none", cursor: "pointer"
         }}>
           <option value="all">All Cupboards</option>
-          {cupboards.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+          {cupboards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
 
         {/* View Toggle */}
