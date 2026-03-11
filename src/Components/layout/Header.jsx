@@ -1,6 +1,12 @@
+import { useAuth } from "../../context/AuthContext";
+
 export default function Header({ title }) {
-  const role    = localStorage.getItem("role") || "staff";
-  const isAdmin = role === "admin";
+  const { user, isAdmin } = useAuth();
+
+  // Generate initials from real name (e.g. "Ashan Fernando" → "AF")
+  const initials = user?.name
+    ? user.name.split(" ").map(n => n[0]).join("").toUpperCase()
+    : "??";
 
   return (
     <header className="app-header">
@@ -27,9 +33,13 @@ export default function Header({ title }) {
           <span className="notif-dot" />
         </div>
 
-        {/* Avatar */}
-        <div className="avatar avatar-lg" style={{ cursor: "pointer" }}>
-          {isAdmin ? "AD" : "ST"}
+        {/* Avatar — shows real initials */}
+        <div
+          className="avatar avatar-lg"
+          style={{ cursor: "pointer" }}
+          title={user?.name || ""}
+        >
+          {initials}
         </div>
 
       </div>

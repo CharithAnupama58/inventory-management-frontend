@@ -1,27 +1,41 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { Navigate } from "react-router-dom";
 
 export default function LoginPage() {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [focused, setFocused] = useState("");
+  const navigate     = useNavigate();
+  const { login }    = useAuth();
 
-  const handleLogin = (e) => {
+  const [email, setEmail]             = useState("");
+  const [password, setPassword]       = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading]     = useState(false);
+  const [error, setError]             = useState("");
+  const [focused, setFocused]         = useState("");
+  const { isAuthenticated } = useAuth();
+
+  
+
+  const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      if (email === "admin@test.com") {
-        localStorage.setItem("role", "admin");
-        navigate("/admin/dashboard");
+    setError("");
+
+    try {
+      const user = await login(email, password);
+      // Navigate based on role returned from real API
+      if (user.role === "admin") {
+        navigate("/dashboard");
       } else {
-        localStorage.setItem("role", "staff");
-        navigate("/staff/dashboard");
+        navigate("/dashboard");
       }
+    } catch (err) {
+      const message = err.response?.data?.message || "Invalid credentials. Please try again.";
+      setError(message);
+    } finally {
       setIsLoading(false);
-    }, 1200);
+    }
   };
 
   return (
@@ -580,7 +594,21 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <button className="login-btn" type="submit" disabled={isLoading}>
+              {/* API Error Message */}
+              {error && (
+                <div style={{
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1.5px solid rgba(239,68,68,0.3)",
+                  borderRadius: "10px", padding: "12px 16px",
+                  marginBottom: "16px", fontSize: "13px",
+                  color: "#ef4444", fontFamily: "'DM Sans', sans-serif",
+                  display: "flex", alignItems: "center", gap: "8px",
+                }}>
+                  ⚠️ {error}
+                </div>
+              )}
+
+                            <button className="login-btn" type="submit" disabled={isLoading}>
                 <span className="btn-text">
                   {isLoading ? (
                     <><div className="spinner" /> Signing in...</>

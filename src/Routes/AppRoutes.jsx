@@ -1,18 +1,32 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Box } from "@mui/material";
-import LoginPage     from "../Features/auth/LoginPage";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "../context/AuthContext";
+import ProtectedRoute from "../Components/common/ProtectedRoute";
+import LoginPage from "../Features/auth/LoginPage";
 import DashboardPage from "../Features/dashboard/DashboardPage";
 
 export default function AppRoutes() {
   return (
-    <BrowserRouter>
-      <Box sx={{ width: "100vw", height: "100vh", overflow: "hidden" }}>
+    <AuthProvider>
+      <BrowserRouter>
         <Routes>
-          <Route path="/"                 element={<LoginPage />} />
-          <Route path="/admin/dashboard"  element={<DashboardPage />} />
-          <Route path="/staff/dashboard"  element={<DashboardPage />} />
+          {/* Public */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* Protected — any authenticated user */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Default redirect */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
-      </Box>
-    </BrowserRouter>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }

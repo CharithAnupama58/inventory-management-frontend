@@ -14,6 +14,7 @@ const PAGE_TITLES = {
 
 export default function MainLayout({ children, defaultPage = "dashboard" }) {
   const [activePage, setActivePage] = useState(defaultPage);
+  console.log(activePage);
 
   // Allow children to receive activePage so they can render the right content
   const childWithPage = typeof children === "function"

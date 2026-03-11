@@ -1,28 +1,36 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import StatusBadge from "../../Components/common/StatusBadge";
 import BorrowForm  from "./BorrowForm";
+import ItemService from "../../services/itemService";
+import { CupboardService } from "../../services/otherServices";
 
-/* ─── Mock Data (replace with API calls later) ─── */
-const ALL_ITEMS = [
-  { id: 1,  name: "Soldering Iron",  code: "EQ-001", qty: 5,  serial: "SI-2024-001", place: "Cupboard A – Shelf 1", cupboard: "Cupboard A", status: "instore",  emoji: "🔧", description: "60W adjustable temperature soldering iron for PCB work." },
-  { id: 2,  name: "Oscilloscope",    code: "EQ-002", qty: 2,  serial: "OS-2024-002", place: "Cupboard B – Shelf 2", cupboard: "Cupboard B", status: "borrowed", emoji: "📡", description: "4-channel 100MHz digital oscilloscope for signal analysis." },
-  { id: 3,  name: "Arduino Mega",    code: "CM-003", qty: 12, serial: null,          place: "Cupboard A – Shelf 3", cupboard: "Cupboard A", status: "instore",  emoji: "🔌", description: "Arduino Mega 2560 microcontroller board." },
-  { id: 4,  name: "Multimeter",      code: "EQ-004", qty: 1,  serial: "MM-2023-004", place: "Cupboard C – Shelf 1", cupboard: "Cupboard C", status: "damaged",  emoji: "⚡", description: "Digital multimeter for voltage, current and resistance measurement." },
-  { id: 5,  name: "Raspberry Pi 4",  code: "CM-005", qty: 0,  serial: "RP-2024-005", place: "Cupboard B – Shelf 1", cupboard: "Cupboard B", status: "missing",  emoji: "💻", description: "Raspberry Pi 4 Model B 4GB single-board computer." },
-  { id: 6,  name: "Breadboard",      code: "CM-006", qty: 10, serial: null,          place: "Cupboard A – Shelf 2", cupboard: "Cupboard A", status: "instore",  emoji: "🔲", description: "830-point solderless breadboard for prototyping circuits." },
-  { id: 7,  name: "Wire Stripper",   code: "TL-007", qty: 3,  serial: null,          place: "Cupboard C – Shelf 2", cupboard: "Cupboard C", status: "instore",  emoji: "✂️", description: "Automatic wire stripper and cutter for 10-24 AWG wire." },
-  { id: 8,  name: "Heat Gun",        code: "EQ-008", qty: 1,  serial: "HG-2023-008", place: "Cupboard B – Shelf 3", cupboard: "Cupboard B", status: "borrowed", emoji: "🌡️", description: "Variable temperature heat gun for shrink tubing and rework." },
-  { id: 9,  name: "Logic Analyzer",  code: "EQ-009", qty: 2,  serial: "LA-2024-009", place: "Cupboard A – Shelf 1", cupboard: "Cupboard A", status: "instore",  emoji: "🔍", description: "8-channel USB logic analyzer for digital signal debugging." },
-  { id: 10, name: "Power Supply",    code: "EQ-010", qty: 2,  serial: "PS-2024-010", place: "Cupboard C – Shelf 3", cupboard: "Cupboard C", status: "instore",  emoji: "🔋", description: "DC bench power supply 0-30V 0-5A with dual output." },
-  { id: 11, name: "ESP32 Module",    code: "CM-011", qty: 8,  serial: null,          place: "Cupboard A – Shelf 2", cupboard: "Cupboard A", status: "instore",  emoji: "📶", description: "ESP32 WiFi+Bluetooth microcontroller development board." },
-  { id: 12, name: "Crimping Tool",   code: "TL-012", qty: 2,  serial: null,          place: "Cupboard C – Shelf 1", cupboard: "Cupboard C", status: "instore",  emoji: "🔩", description: "Ratcheting crimping tool for JST and Dupont connectors." },
-];
-
-const STATUSES  = ["all", "instore", "borrowed", "damaged", "missing"];
-const CUPBOARDS = ["all", "Cupboard A", "Cupboard B", "Cupboard C"];
+const STATUSES      = ["all", "instore", "borrowed", "damaged", "missing"];
 const STATUS_LABELS = { all: "All Status", instore: "In Store", borrowed: "Borrowed", damaged: "Damaged", missing: "Missing" };
 
+// Map item name to emoji (backend doesn't store emoji)
+const getEmoji = (name = "") => {
+  const n = name.toLowerCase();
+  if (n.includes("solder"))    return "🔧";
+  if (n.includes("oscilloscope")) return "📡";
+  if (n.includes("arduino"))   return "🔌";
+  if (n.includes("multimeter")) return "⚡";
+  if (n.includes("raspberry")) return "💻";
+  if (n.includes("breadboard")) return "🔲";
+  if (n.includes("wire"))      return "✂️";
+  if (n.includes("heat"))      return "🌡️";
+  if (n.includes("logic"))     return "🔍";
+  if (n.includes("power"))     return "🔋";
+  if (n.includes("esp"))       return "📶";
+  if (n.includes("crimp"))     return "🔩";
+  return "📦";
+};
+
 export default function BrowseInventory() {
+  const [items,        setItems]       = useState([]);
+  const [cupboards,    setCupboards]   = useState([]);
+  const [loading,      setLoading]     = useState(true);  // only for initial load
+  const [searching,    setSearching]   = useState(false); // for search/filter updates
+  const [error,        setError]       = useState("");
   const [search,    setSearch]    = useState("");
   const [statusF,   setStatusF]   = useState("all");
   const [cupboardF, setCupboardF] = useState("all");
@@ -30,22 +38,97 @@ export default function BrowseInventory() {
   const [selected,  setSelected]  = useState(null);
   const [borrowItem,setBorrowItem]= useState(null);
 
-  const filtered = useMemo(() => ALL_ITEMS.filter(item => {
-    const matchSearch   = item.name.toLowerCase().includes(search.toLowerCase()) || item.code.toLowerCase().includes(search.toLowerCase());
+  // ── Fetch items from real API ──
+  const fetchItems = useCallback(async (searchValue = "", isInitial = false) => {
+    try {
+      if (isInitial) setLoading(true);
+      else setSearching(true);
+      setError("");
+      const params = {};
+      if (statusF        !== "all") params.status     = statusF;
+      if (cupboardF      !== "all") params.cupboard_id = cupboardF;
+      if (searchValue)              params.search      = searchValue;
+
+      const response = await ItemService.getAll(params);
+      const mapped = (response.data || []).map(item => ({
+        ...item,
+        emoji:    getEmoji(item.name),
+        place:    item.place?.name
+                    ? `${item.cupboard?.name} – ${item.place.name}`
+                    : item.cupboard?.name || "—",
+        cupboard: item.cupboard?.name || "—",
+      }));
+      setItems(mapped);
+    } catch (err) {
+      setError("Failed to load items. Please try again.");
+    } finally {
+      setLoading(false);
+      setSearching(false);
+    }
+  }, [statusF, cupboardF]);
+
+  // ── Fetch cupboards for filter dropdown ──
+  useEffect(() => {
+    CupboardService.getAll().then(setCupboards).catch(() => {});
+  }, []);
+
+  // ── Initial load + status/cupboard filter change ──
+  useEffect(() => {
+    fetchItems(search, true);
+  }, [fetchItems]);
+
+  // ── Debounce search input separately — no loading on every keystroke ──
+  useEffect(() => {
+    const delay = setTimeout(() => fetchItems(search), 500);
+    return () => clearTimeout(delay);
+  }, [search]);
+
+  // ── Counts for filter tabs ──
+  const counts = useMemo(() => ({
+    all:      items.length,
+    instore:  items.filter(i => i.status === "instore").length,
+    borrowed: items.filter(i => i.status === "borrowed").length,
+    damaged:  items.filter(i => i.status === "damaged").length,
+    missing:  items.filter(i => i.status === "missing").length,
+  }), [items]);
+
+  // ── Client-side filter (status + search already sent to API but still filter locally) ──
+  const filtered = useMemo(() => items.filter(item => {
+    const matchSearch   = item.name.toLowerCase().includes(search.toLowerCase()) ||
+                          item.code.toLowerCase().includes(search.toLowerCase());
     const matchStatus   = statusF   === "all" || item.status   === statusF;
     const matchCupboard = cupboardF === "all" || item.cupboard === cupboardF;
     return matchSearch && matchStatus && matchCupboard;
-  }), [search, statusF, cupboardF]);
+  }), [items, search, statusF, cupboardF]);
 
-  const counts = useMemo(() => ({
-    all:      ALL_ITEMS.length,
-    instore:  ALL_ITEMS.filter(i => i.status === "instore").length,
-    borrowed: ALL_ITEMS.filter(i => i.status === "borrowed").length,
-    damaged:  ALL_ITEMS.filter(i => i.status === "damaged").length,
-    missing:  ALL_ITEMS.filter(i => i.status === "missing").length,
-  }), []);
+  const canBorrow = (item) => item.status === "instore" && item.quantity > 0;
 
-  const canBorrow = (item) => item.status === "instore" && item.qty > 0;
+  // ── After successful borrow → refresh items ──
+  const handleBorrowSuccess = () => {
+    setBorrowItem(null);
+    fetchItems();
+  };
+
+  // ── Loading state ──
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: "16px", color: "var(--text-muted)" }}>
+      <div style={{ width: "36px", height: "36px", border: "3px solid var(--border)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <span style={{ fontSize: "13px" }}>Loading inventory...</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+
+  // ── Error state ──
+  if (error) return (
+    <div style={{ textAlign: "center", padding: "64px 20px", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: "40px", marginBottom: "12px" }}>⚠️</div>
+      <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "8px" }}>Failed to load</div>
+      <div style={{ fontSize: "13px", marginBottom: "20px" }}>{error}</div>
+      <button onClick={fetchItems} style={{ padding: "10px 24px", borderRadius: "9px", background: "#0f0f1a", color: "#fff", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", fontSize: "13px" }}>
+        Try Again
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease forwards" }}>
@@ -92,13 +175,14 @@ export default function BrowseInventory() {
           {search && <button onClick={() => setSearch("")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "18px", lineHeight: 1 }}>×</button>}
         </div>
 
-        {/* Cupboard filter */}
+        {/* Cupboard filter — from real API */}
         <select value={cupboardF} onChange={e => setCupboardF(e.target.value)} style={{
           padding: "9px 14px", borderRadius: "10px", border: "1.5px solid var(--border)",
           background: "var(--surface)", color: "var(--text-primary)",
           fontSize: "13px", fontFamily: "'DM Sans',sans-serif", outline: "none", cursor: "pointer"
         }}>
-          {CUPBOARDS.map(c => <option key={c} value={c}>{c === "all" ? "All Cupboards" : c}</option>)}
+          <option value="all">All Cupboards</option>
+          {cupboards.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
         </select>
 
         {/* View Toggle */}
@@ -117,7 +201,8 @@ export default function BrowseInventory() {
           ))}
         </div>
 
-        <span style={{ fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "6px" }}>
+          {searching && <div style={{ width: "12px", height: "12px", border: "2px solid var(--border)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />}
           {filtered.length} item{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -152,7 +237,7 @@ export default function BrowseInventory() {
               <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>{item.code}</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "20px", color: "var(--text-primary)" }}>{item.qty}</span>
+                  <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "20px", color: "var(--text-primary)" }}>{item.quantity}</span>
                   <span style={{ fontSize: "11px", color: "var(--text-muted)", marginLeft: "4px" }}>available</span>
                 </div>
                 {canBorrow(item) && (
@@ -186,7 +271,7 @@ export default function BrowseInventory() {
                 <tr key={item.id} style={{ cursor: "pointer" }} onClick={() => setSelected(item)}>
                   <td><div className="item-cell"><div className="item-thumb">{item.emoji}</div><div style={{ fontWeight: 500 }}>{item.name}</div></div></td>
                   <td style={{ fontFamily: "'Syne',sans-serif", fontSize: "12px", color: "var(--text-muted)" }}>{item.code}</td>
-                  <td style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700 }}>{item.qty}</td>
+                  <td style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700 }}>{item.quantity}</td>
                   <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{item.place}</td>
                   <td><StatusBadge status={item.status} /></td>
                   <td onClick={e => e.stopPropagation()}>
@@ -214,7 +299,6 @@ export default function BrowseInventory() {
             width: "100%", maxWidth: "480px", overflow: "hidden",
             boxShadow: "0 24px 64px rgba(0,0,0,0.18)", animation: "slideUp 0.25s ease"
           }}>
-            {/* Header */}
             <div style={{ padding: "24px 24px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", gap: "16px" }}>
               <div style={{ width: "56px", height: "56px", borderRadius: "14px", background: "var(--surface2)", fontSize: "26px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{selected.emoji}</div>
               <div style={{ flex: 1 }}>
@@ -226,14 +310,12 @@ export default function BrowseInventory() {
               </div>
               <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "22px", lineHeight: 1 }}>×</button>
             </div>
-
-            {/* Body */}
             <div style={{ padding: "20px 24px" }}>
-              <p style={{ fontSize: "13.5px", color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "20px" }}>{selected.description}</p>
+              <p style={{ fontSize: "13.5px", color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "20px" }}>{selected.description || "No description available."}</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
                 {[
-                  { label: "Quantity",   value: selected.qty },
-                  { label: "Serial No.", value: selected.serial || "N/A" },
+                  { label: "Quantity",   value: selected.quantity },
+                  { label: "Serial No.", value: selected.serial_number || "N/A" },
                   { label: "Location",   value: selected.place },
                   { label: "Cupboard",   value: selected.cupboard },
                 ].map((row, i) => (
@@ -244,8 +326,6 @@ export default function BrowseInventory() {
                 ))}
               </div>
             </div>
-
-            {/* Footer */}
             <div style={{ padding: "16px 24px", borderTop: "1px solid var(--border)", display: "flex", gap: "10px", justifyContent: "flex-end" }}>
               <button onClick={() => setSelected(null)} style={{
                 padding: "10px 20px", borderRadius: "9px", border: "1.5px solid var(--border)",
@@ -272,10 +352,7 @@ export default function BrowseInventory() {
         <BorrowForm
           item={borrowItem}
           onClose={() => setBorrowItem(null)}
-          onSuccess={({ item, formData }) => {
-            console.log("Borrow submitted:", { item, formData });
-            // TODO: POST /api/borrows  →  refresh item list
-          }}
+          onSuccess={handleBorrowSuccess}
         />
       )}
 

@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 const Icons = {
   Home: () => (
@@ -67,13 +68,12 @@ const STAFF_NAV = [
 
 export default function Sidebar({ activePage, onNavigate }) {
   const navigate = useNavigate();
-  const role     = localStorage.getItem("role") || "staff";
-  const isAdmin  = role === "admin";
+  const { user, logout, isAdmin } = useAuth();  // ← replace localStorage
   const navItems = isAdmin ? ADMIN_NAV : STAFF_NAV;
 
-  const handleLogout = () => {
-    localStorage.removeItem("role");
-    navigate("/");
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
   };
 
   return (
@@ -122,11 +122,11 @@ export default function Sidebar({ activePage, onNavigate }) {
       <div className="sidebar-footer">
         <div className="user-card">
           <div className="avatar">
-            {isAdmin ? "AD" : "ST"}
+            {user?.name?.split(" ").map(n => n[0]).join("").toUpperCase() || "??"}
           </div>
           <div>
-            <div className="user-name">{isAdmin ? "Admin User" : "Staff User"}</div>
-            <div className="user-email">{isAdmin ? "admin@test.com" : "staff@ceyntics.com"}</div>
+            <div className="user-name">{user?.name || "User"}</div>
+            <div className="user-email">{user?.email || ""}</div>
           </div>
         </div>
 
