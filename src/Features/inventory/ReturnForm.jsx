@@ -1,9 +1,10 @@
 import { useState } from "react";
+import BorrowService from "../../services/borrowService";
 
 const CONDITIONS = [
-  { value: "good",     label: "Good",     desc: "Item is in original condition",       color: "#10b981", bg: "#d1fae5" },
-  { value: "fair",     label: "Fair",     desc: "Minor wear but fully functional",     color: "#f59e0b", bg: "#fef3c7" },
-  { value: "damaged",  label: "Damaged",  desc: "Item has damage that needs attention", color: "#ef4444", bg: "#fee2e2" },
+  { value: "good",    label: "Good",    desc: "Item is in original condition",        color: "#10b981", bg: "#d1fae5" },
+  { value: "fair",    label: "Fair",    desc: "Minor wear but fully functional",      color: "#f59e0b", bg: "#fef3c7" },
+  { value: "damaged", label: "Damaged", desc: "Item has damage that needs attention", color: "#ef4444", bg: "#fee2e2" },
 ];
 
 function SuccessScreen({ borrow, condition, notes, onClose }) {
@@ -26,11 +27,11 @@ function SuccessScreen({ borrow, condition, notes, onClose }) {
 
       <div style={{ background: "var(--surface2)", borderRadius: "12px", padding: "18px", textAlign: "left", marginBottom: "24px" }}>
         {[
-          { label: "Item",           value: `${borrow.emoji} ${borrow.itemName}` },
-          { label: "Quantity",       value: `${borrow.qty} unit(s)` },
-          { label: "Returned By",    value: borrow.borrowerName },
-          { label: "Return Date",    value: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) },
-          { label: "Condition",      value: cond?.label || condition },
+          { label: "Item",        value: `${borrow.emoji} ${borrow.itemName}` },
+          { label: "Quantity",    value: `${borrow.qty} unit(s)` },
+          { label: "Returned By", value: borrow.borrowerName },
+          { label: "Return Date", value: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) },
+          { label: "Condition",   value: cond?.label || condition },
           ...(notes ? [{ label: "Notes", value: notes }] : []),
         ].map((row, i, arr) => (
           <div key={i} style={{
@@ -57,25 +58,35 @@ function SuccessScreen({ borrow, condition, notes, onClose }) {
 }
 
 export default function ReturnForm({ borrow, onClose, onSuccess }) {
-  const [step,      setStep]      = useState(1); // 1=form, 2=confirm, 3=success
+  const [step,      setStep]      = useState(1);
   const [condition, setCondition] = useState("good");
   const [notes,     setNotes]     = useState("");
   const [loading,   setLoading]   = useState(false);
+  const [apiError,  setApiError]  = useState("");
 
-  const handleSubmit = () => {
+  // ── Real API call ──
+  const handleSubmit = async () => {
     setLoading(true);
-    // Simulate API — replace with PATCH /api/borrows/:id/return later
-    setTimeout(() => {
-      setLoading(false);
+    setApiError("");
+    try {
+      await BorrowService.processReturn(borrow.id, {
+        return_condition: condition,
+        notes:            notes || null,
+      });
       setStep(3);
-      onSuccess && onSuccess({ borrow, condition, notes });
-    }, 1200);
+      onSuccess && onSuccess();
+    } catch (err) {
+      const msg = err.response?.data?.message || "Failed to process return. Please try again.";
+      setApiError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!borrow) return null;
 
   const selectedCond = CONDITIONS.find(c => c.value === condition);
-  const isOverdue = borrow.dueDate && new Date(borrow.dueDate) < new Date();
+  const isOverdue    = borrow.dueDate && new Date(borrow.dueDate) < new Date();
 
   return (
     <div onClick={onClose} style={{
@@ -116,7 +127,6 @@ export default function ReturnForm({ borrow, onClose, onSuccess }) {
                 </div>
               </div>
 
-              {/* Step dots */}
               <div style={{ display: "flex", gap: "6px" }}>
                 {[1, 2].map(s => (
                   <div key={s} style={{
@@ -134,7 +144,6 @@ export default function ReturnForm({ borrow, onClose, onSuccess }) {
             {step === 1 && (
               <div style={{ padding: "22px 24px" }}>
 
-                {/* Borrow summary */}
                 <div style={{
                   background: "var(--surface2)", borderRadius: "12px",
                   padding: "14px 16px", marginBottom: "22px",
@@ -144,7 +153,7 @@ export default function ReturnForm({ borrow, onClose, onSuccess }) {
                     { label: "Borrowed By", value: borrow.borrowerName },
                     { label: "Quantity",    value: `${borrow.qty} unit(s)` },
                     { label: "Borrow Date", value: borrow.borrowDate },
-                    { label: "Due Date",    value: borrow.dueDate },
+                    { label: "Due Date",    value: borrow.dueDateLabel || borrow.dueDate },
                   ].map((row, i) => (
                     <div key={i}>
                       <div style={{ fontSize: "10px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "3px" }}>{row.label}</div>
@@ -158,7 +167,6 @@ export default function ReturnForm({ borrow, onClose, onSuccess }) {
                   ))}
                 </div>
 
-                {/* Overdue warning */}
                 {isOverdue && (
                   <div style={{
                     display: "flex", gap: "10px", alignItems: "flex-start",
@@ -264,11 +272,11 @@ export default function ReturnForm({ borrow, onClose, onSuccess }) {
 
                 <div style={{ background: "var(--surface2)", borderRadius: "12px", padding: "18px", marginBottom: "20px" }}>
                   {[
-                    { label: "Item",         value: `${borrow.emoji} ${borrow.itemName}` },
-                    { label: "Quantity",     value: `${borrow.qty} unit(s)` },
-                    { label: "Returned By",  value: borrow.borrowerName },
-                    { label: "Return Date",  value: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) },
-                    { label: "Condition",    value: selectedCond?.label },
+                    { label: "Item",        value: `${borrow.emoji} ${borrow.itemName}` },
+                    { label: "Quantity",    value: `${borrow.qty} unit(s)` },
+                    { label: "Returned By", value: borrow.borrowerName },
+                    { label: "Return Date", value: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) },
+                    { label: "Condition",   value: selectedCond?.label },
                     ...(notes ? [{ label: "Notes", value: notes }] : []),
                   ].map((row, i, arr) => (
                     <div key={i} style={{
@@ -278,15 +286,23 @@ export default function ReturnForm({ borrow, onClose, onSuccess }) {
                       <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.7px", flexShrink: 0 }}>{row.label}</span>
                       <span style={{
                         fontSize: "13px", fontWeight: 600, textAlign: "right",
-                        color: row.label === "Condition"
-                          ? (selectedCond?.color || "var(--text-primary)")
-                          : "var(--text-primary)"
+                        color: row.label === "Condition" ? (selectedCond?.color || "var(--text-primary)") : "var(--text-primary)"
                       }}>{row.value}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* Audit notice */}
+                {/* API error */}
+                {apiError && (
+                  <div style={{
+                    background: "rgba(239,68,68,0.1)", border: "1.5px solid rgba(239,68,68,0.3)",
+                    borderRadius: "10px", padding: "12px 14px", marginBottom: "16px",
+                    fontSize: "13px", color: "#ef4444", display: "flex", alignItems: "center", gap: "8px"
+                  }}>
+                    ⚠️ {apiError}
+                  </div>
+                )}
+
                 <div style={{
                   display: "flex", gap: "10px", alignItems: "flex-start",
                   background: "#d1fae5", border: "1px solid #6ee7b7",

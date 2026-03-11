@@ -1,18 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import StatusBadge from "../../Components/common/StatusBadge";
 import ReturnForm  from "../inventory/ReturnForm";
-
-/* ─── Mock Data (replace with GET /api/borrows later) ─── */
-const INITIAL_BORROWS = [
-  { id: 1,  itemName: "Soldering Iron",  code: "EQ-001", emoji: "🔧", borrowerName: "Kasun Perera",     contact: "+94 77 111 2222", qty: 1, borrowDate: "Mar 05, 2026", dueDate: "2026-03-12", dueDateLabel: "Mar 12, 2026", status: "borrowed", notes: "",                    returnDate: null,         condition: null  },
-  { id: 2,  itemName: "Arduino Mega",    code: "CM-003", emoji: "🔌", borrowerName: "Kasun Perera",     contact: "+94 77 111 2222", qty: 2, borrowDate: "Mar 07, 2026", dueDate: "2026-03-14", dueDateLabel: "Mar 14, 2026", status: "borrowed", notes: "Robotics project",    returnDate: null,         condition: null  },
-  { id: 3,  itemName: "Heat Gun",        code: "EQ-008", emoji: "🌡️", borrowerName: "Nimali Silva",     contact: "+94 77 333 4444", qty: 1, borrowDate: "Mar 01, 2026", dueDate: "2026-03-08", dueDateLabel: "Mar 08, 2026", status: "borrowed", notes: "",                    returnDate: null,         condition: null  },
-  { id: 4,  itemName: "Oscilloscope",    code: "EQ-002", emoji: "📡", borrowerName: "Ruwan Jayasinghe", contact: "+94 77 555 6666", qty: 1, borrowDate: "Feb 20, 2026", dueDate: "2026-02-28", dueDateLabel: "Feb 28, 2026", status: "returned", notes: "",                    returnDate: "Feb 27, 2026", condition: "good"  },
-  { id: 5,  itemName: "Breadboard",      code: "CM-006", emoji: "🔲", borrowerName: "Nimali Silva",     contact: "+94 77 333 4444", qty: 3, borrowDate: "Feb 25, 2026", dueDate: "2026-03-05", dueDateLabel: "Mar 05, 2026", status: "returned", notes: "Lab session",        returnDate: "Mar 04, 2026", condition: "good"  },
-  { id: 6,  itemName: "Logic Analyzer",  code: "EQ-009", emoji: "🔍", borrowerName: "Tharindu Madush",  contact: "+94 77 777 8888", qty: 1, borrowDate: "Feb 15, 2026", dueDate: "2026-02-20", dueDateLabel: "Feb 20, 2026", status: "returned", notes: "",                    returnDate: "Feb 22, 2026", condition: "fair"  },
-  { id: 7,  itemName: "Power Supply",    code: "EQ-010", emoji: "🔋", borrowerName: "Ruwan Jayasinghe", contact: "+94 77 555 6666", qty: 1, borrowDate: "Mar 06, 2026", dueDate: "2026-03-10", dueDateLabel: "Mar 10, 2026", status: "borrowed", notes: "PCB testing",        returnDate: null,         condition: null  },
-  { id: 8,  itemName: "ESP32 Module",    code: "CM-011", emoji: "📶", borrowerName: "Dilani Wickrama",  contact: "+94 77 999 0000", qty: 2, borrowDate: "Mar 08, 2026", dueDate: "2026-03-15", dueDateLabel: "Mar 15, 2026", status: "borrowed", notes: "IoT project",        returnDate: null,         condition: null  },
-];
+import BorrowService from "../../services/borrowService";
 
 const CONDITION_COLORS = { good: "#10b981", fair: "#f59e0b", damaged: "#ef4444" };
 
@@ -23,7 +12,29 @@ const TABS = [
   { id: "returned", label: "Returned", icon: "↩️" },
 ];
 
-function isDue(dueDate) { return new Date(dueDate) < new Date(); }
+const getEmoji = (name = "") => {
+  const n = name.toLowerCase();
+  if (n.includes("solder"))       return "🔧";
+  if (n.includes("oscilloscope")) return "📡";
+  if (n.includes("arduino"))      return "🔌";
+  if (n.includes("multimeter"))   return "⚡";
+  if (n.includes("raspberry"))    return "💻";
+  if (n.includes("breadboard"))   return "🔲";
+  if (n.includes("wire"))         return "✂️";
+  if (n.includes("heat"))         return "🌡️";
+  if (n.includes("logic"))        return "🔍";
+  if (n.includes("power"))        return "🔋";
+  if (n.includes("esp"))          return "📶";
+  if (n.includes("crimp"))        return "🔩";
+  return "📦";
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+};
+
+function isDue(dueDate)  { return new Date(dueDate) < new Date(); }
 function daysLeft(dueDate) {
   return Math.ceil((new Date(dueDate) - new Date()) / (1000 * 60 * 60 * 24));
 }
@@ -48,7 +59,6 @@ function BorrowDetail({ borrow, onClose, onReturn }) {
         animation: "slideUp 0.25s ease", overflow: "hidden",
         maxHeight: "90vh", overflowY: "auto"
       }}>
-        {/* Header */}
         <div style={{
           padding: "22px 24px 18px", borderBottom: "1px solid var(--border)",
           display: "flex", alignItems: "center", gap: "14px"
@@ -66,7 +76,6 @@ function BorrowDetail({ borrow, onClose, onReturn }) {
         </div>
 
         <div style={{ padding: "20px 24px" }}>
-          {/* Grid info */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "18px" }}>
             {[
               { label: "Borrowed By",  value: borrow.borrowerName },
@@ -129,25 +138,58 @@ function BorrowDetail({ borrow, onClose, onReturn }) {
    MAIN PAGE
 ══════════════════════════════════════════ */
 export default function BorrowManagement() {
-  const [borrows,      setBorrows]      = useState(INITIAL_BORROWS);
+  const [borrows,      setBorrows]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState("");
   const [activeTab,    setActiveTab]    = useState("all");
   const [search,       setSearch]       = useState("");
   const [selectedUser, setSelectedUser] = useState("all");
   const [detailBorrow, setDetailBorrow] = useState(null);
   const [returnBorrow, setReturnBorrow] = useState(null);
 
+  // ── Fetch all borrows from real API ──
+  const fetchBorrows = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const response = await BorrowService.getAll();
+      const list = (response.data || []).map(b => ({
+        ...b,
+        emoji:        getEmoji(b.item?.name || ""),
+        itemName:     b.item?.name  || "Unknown Item",
+        code:         b.item?.code  || "—",
+        qty:          b.quantity,
+        borrowerName: b.borrower_name,
+        contact:      b.contact,
+        borrowDate:   formatDate(b.borrow_date),
+        dueDate:      b.expected_return_date,
+        dueDateLabel: formatDate(b.expected_return_date),
+        returnDate:   formatDate(b.actual_return_date),
+        condition:    b.return_condition || null,
+      }));
+      setBorrows(list);
+    } catch (err) {
+      setError("Failed to load borrows. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchBorrows(); }, [fetchBorrows]);
+
+  // ── Unique users for filter dropdown ──
   const allUsers = ["all", ...Array.from(new Set(borrows.map(b => b.borrowerName)))];
 
   const filtered = useMemo(() => borrows.filter(b => {
     const matchSearch = b.itemName.toLowerCase().includes(search.toLowerCase()) ||
                         b.borrowerName.toLowerCase().includes(search.toLowerCase()) ||
                         b.code.toLowerCase().includes(search.toLowerCase());
-    const matchUser = selectedUser === "all" || b.borrowerName === selectedUser;
-    const isOverdue = b.status === "borrowed" && isDue(b.dueDate);
-    const matchTab  = activeTab === "all"      ? true
-                    : activeTab === "borrowed" ? b.status === "borrowed"
-                    : activeTab === "overdue"  ? isOverdue
-                    : b.status === "returned";
+    const matchUser   = selectedUser === "all" || b.borrowerName === selectedUser;
+    const isOverdue   = b.status === "borrowed" && isDue(b.dueDate);
+    const matchTab    = activeTab === "all"      ? true
+                      : activeTab === "borrowed" ? b.status === "borrowed"
+                      : activeTab === "overdue"  ? isOverdue
+                      : b.status === "returned";
     return matchSearch && matchUser && matchTab;
   }), [borrows, search, selectedUser, activeTab]);
 
@@ -158,15 +200,32 @@ export default function BorrowManagement() {
     returned: borrows.filter(b => b.status === "returned").length,
   }), [borrows]);
 
-  const handleReturnSuccess = ({ borrow, condition, notes }) => {
-    setBorrows(prev => prev.map(b =>
-      b.id === borrow.id ? {
-        ...b, status: "returned", condition, notes,
-        returnDate: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
-      } : b
-    ));
+  // ── After return → refresh from API ──
+  const handleReturnSuccess = () => {
     setReturnBorrow(null);
+    fetchBorrows();
   };
+
+  // ── Loading state ──
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: "16px", color: "var(--text-muted)" }}>
+      <div style={{ width: "36px", height: "36px", border: "3px solid var(--border)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <span style={{ fontSize: "13px" }}>Loading borrows...</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+
+  // ── Error state ──
+  if (error) return (
+    <div style={{ textAlign: "center", padding: "64px 20px", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: "40px", marginBottom: "12px" }}>⚠️</div>
+      <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "8px" }}>Failed to load</div>
+      <div style={{ fontSize: "13px", marginBottom: "20px" }}>{error}</div>
+      <button onClick={fetchBorrows} style={{ padding: "10px 24px", borderRadius: "9px", background: "#0f0f1a", color: "#fff", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", fontSize: "13px" }}>
+        Try Again
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease forwards" }}>
@@ -225,7 +284,6 @@ export default function BorrowManagement() {
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap", alignItems: "center" }}>
-        {/* Search */}
         <div style={{
           display: "flex", alignItems: "center", gap: "8px",
           background: "var(--surface)", border: "1.5px solid var(--border)",
@@ -238,7 +296,6 @@ export default function BorrowManagement() {
           {search && <button onClick={() => setSearch("")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "18px", lineHeight: 1 }}>×</button>}
         </div>
 
-        {/* User filter */}
         <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} style={{
           padding: "9px 14px", borderRadius: "10px", border: "1.5px solid var(--border)",
           background: "var(--surface)", color: "var(--text-primary)",
@@ -282,7 +339,6 @@ export default function BorrowManagement() {
               )}
 
               <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: "16px" }}>
-                {/* Emoji */}
                 <div style={{
                   width: "46px", height: "46px", borderRadius: "12px",
                   background: overdue ? "#fee2e2" : "var(--surface2)",
@@ -290,7 +346,6 @@ export default function BorrowManagement() {
                   justifyContent: "center", flexShrink: 0
                 }}>{borrow.emoji}</div>
 
-                {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px", flexWrap: "wrap" }}>
                     <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "14px", color: "var(--text-primary)" }}>{borrow.itemName}</span>
@@ -338,32 +393,26 @@ export default function BorrowManagement() {
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
-                  <button
-                    onClick={() => setDetailBorrow(borrow)}
-                    style={{
-                      padding: "8px 14px", borderRadius: "8px",
-                      border: "1.5px solid var(--border)", background: "var(--surface)",
-                      cursor: "pointer", fontSize: "12px", fontWeight: 500,
-                      color: "var(--text-secondary)", fontFamily: "'DM Sans',sans-serif",
-                      transition: "all 0.15s"
-                    }}
+                  <button onClick={() => setDetailBorrow(borrow)} style={{
+                    padding: "8px 14px", borderRadius: "8px",
+                    border: "1.5px solid var(--border)", background: "var(--surface)",
+                    cursor: "pointer", fontSize: "12px", fontWeight: 500,
+                    color: "var(--text-secondary)", fontFamily: "'DM Sans',sans-serif",
+                    transition: "all 0.15s"
+                  }}
                     onMouseEnter={e => { e.currentTarget.style.background = "#ede9fe"; e.currentTarget.style.borderColor = "#6366f1"; e.currentTarget.style.color = "#6366f1"; }}
                     onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
                   >Details</button>
 
                   {borrow.status === "borrowed" && (
-                    <button
-                      onClick={() => setReturnBorrow(borrow)}
-                      style={{
-                        padding: "8px 16px", borderRadius: "8px",
-                        border: "none",
-                        background: overdue ? "#ef4444" : "#0f0f1a",
-                        color: "#fff", cursor: "pointer",
-                        fontSize: "12px", fontWeight: 600,
-                        fontFamily: "'DM Sans',sans-serif", transition: "background 0.15s"
-                      }}
+                    <button onClick={() => setReturnBorrow(borrow)} style={{
+                      padding: "8px 16px", borderRadius: "8px", border: "none",
+                      background: overdue ? "#ef4444" : "#0f0f1a",
+                      color: "#fff", cursor: "pointer",
+                      fontSize: "12px", fontWeight: 600,
+                      fontFamily: "'DM Sans',sans-serif", transition: "background 0.15s"
+                    }}
                       onMouseEnter={e => e.currentTarget.style.background = "#10b981"}
                       onMouseLeave={e => e.currentTarget.style.background = overdue ? "#ef4444" : "#0f0f1a"}
                     >↩ Return</button>

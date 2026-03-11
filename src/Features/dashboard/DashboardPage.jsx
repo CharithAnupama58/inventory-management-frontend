@@ -12,12 +12,10 @@ import BorrowManagement   from "../borrows/BorrowManagement";
 import AuditLog           from "../audit/AuditLog";
 
 export default function DashboardPage() {
-  const { user, logout, isAdmin } = useAuth();   // ← real auth
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
-  console.log("is Admin",isAdmin);
-  console.log(user);
 
-  const handleLogout = async () => {             // ← real logout
+  const handleLogout = async () => {
     await logout();
     navigate("/login");
   };
@@ -27,23 +25,23 @@ export default function DashboardPage() {
       {(activePage, setActivePage) => (
         <>
           {activePage === "dashboard" && (
-            isAdmin ? <AdminView  /> : <StaffView onNavigate={setActivePage} />
+            isAdmin
+              ? <AdminView onNavigate={setActivePage} />
+              : <StaffView onNavigate={setActivePage} />
           )}
 
-          {/* Shared */}
           {activePage === "inventory" && <BrowseInventory />}
 
-          {/* Storage — role-based view */}
-          {activePage === "storage" && !isAdmin && <StorageMap />}
-          {activePage === "storage" &&  isAdmin  && <StorageManagement />}
+          {activePage === "storage"      && !isAdmin && <StorageMap />}
+          {activePage === "storage"      &&  isAdmin && <StorageManagement />}
+          {activePage === "storage-mgmt" &&  isAdmin && <StorageManagement />}
 
-          {/* Staff only */}
-          {activePage === "borrow" && !isAdmin && <MyBorrows />}
+          {activePage === "borrow"  && !isAdmin && <MyBorrows />}
 
-          {/* Admin only */}
-          {activePage === "borrow" &&  isAdmin && <BorrowManagement />}
-          {activePage === "users"  &&  isAdmin && <UserManagement />}
-          {activePage === "audit"  &&  isAdmin && <AuditLog />}
+          {activePage === "borrow"  &&  isAdmin && <BorrowManagement />}
+          {activePage === "borrows" &&  isAdmin && <BorrowManagement />}
+          {activePage === "users"   &&  isAdmin && <UserManagement />}
+          {activePage === "audit"   &&  isAdmin && <AuditLog />}
         </>
       )}
     </MainLayout>

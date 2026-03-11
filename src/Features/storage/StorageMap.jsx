@@ -1,74 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import StatusBadge from "../../Components/common/StatusBadge";
+import { CupboardService } from "../../services/otherServices";
 
-/* ─── Mock Data (replace with API later) ─── */
-const STORAGE_DATA = [
-  {
-    id: 1, name: "Cupboard A", code: "CUP-A", color: "#6366f1", bg: "#ede9fe",
-    description: "Main electronics storage",
-    places: [
-      {
-        id: 1, name: "Shelf 1", items: [
-          { id: 1,  name: "Soldering Iron",  code: "EQ-001", qty: 5,  status: "instore",  emoji: "🔧" },
-          { id: 9,  name: "Logic Analyzer",  code: "EQ-009", qty: 2,  status: "instore",  emoji: "🔍" },
-        ]
-      },
-      {
-        id: 2, name: "Shelf 2", items: [
-          { id: 6,  name: "Breadboard",      code: "CM-006", qty: 10, status: "instore",  emoji: "🔲" },
-          { id: 11, name: "ESP32 Module",    code: "CM-011", qty: 8,  status: "instore",  emoji: "📶" },
-        ]
-      },
-      {
-        id: 3, name: "Shelf 3", items: [
-          { id: 3,  name: "Arduino Mega",    code: "CM-003", qty: 12, status: "instore",  emoji: "🔌" },
-        ]
-      },
-    ]
-  },
-  {
-    id: 2, name: "Cupboard B", code: "CUP-B", color: "#10b981", bg: "#d1fae5",
-    description: "Test & measurement equipment",
-    places: [
-      {
-        id: 4, name: "Shelf 1", items: [
-          { id: 5,  name: "Raspberry Pi 4",  code: "CM-005", qty: 0,  status: "missing",  emoji: "💻" },
-        ]
-      },
-      {
-        id: 5, name: "Shelf 2", items: [
-          { id: 2,  name: "Oscilloscope",    code: "EQ-002", qty: 2,  status: "borrowed", emoji: "📡" },
-        ]
-      },
-      {
-        id: 6, name: "Shelf 3", items: [
-          { id: 8,  name: "Heat Gun",        code: "EQ-008", qty: 1,  status: "borrowed", emoji: "🌡️" },
-        ]
-      },
-    ]
-  },
-  {
-    id: 3, name: "Cupboard C", code: "CUP-C", color: "#f59e0b", bg: "#fef3c7",
-    description: "Hand tools & accessories",
-    places: [
-      {
-        id: 7, name: "Shelf 1", items: [
-          { id: 4,  name: "Multimeter",      code: "EQ-004", qty: 1,  status: "damaged",  emoji: "⚡" },
-          { id: 12, name: "Crimping Tool",   code: "TL-012", qty: 2,  status: "instore",  emoji: "🔩" },
-        ]
-      },
-      {
-        id: 8, name: "Shelf 2", items: [
-          { id: 7,  name: "Wire Stripper",   code: "TL-007", qty: 3,  status: "instore",  emoji: "✂️" },
-        ]
-      },
-      {
-        id: 9, name: "Shelf 3", items: [
-          { id: 10, name: "Power Supply",    code: "EQ-010", qty: 2,  status: "instore",  emoji: "🔋" },
-        ]
-      },
-    ]
-  },
+// Fallback palettes if cupboard has no color in DB
+const FALLBACK_PALETTES = [
+  { color: "#6366f1", bg: "#ede9fe" },
+  { color: "#10b981", bg: "#d1fae5" },
+  { color: "#f59e0b", bg: "#fef3c7" },
+  { color: "#ef4444", bg: "#fee2e2" },
+  { color: "#3b82f6", bg: "#dbeafe" },
+  { color: "#a855f7", bg: "#f3e8ff" },
 ];
 
 const STATUS_COLORS = {
@@ -76,6 +17,49 @@ const STATUS_COLORS = {
   borrowed: { dot: "#f59e0b", bg: "#fef3c7" },
   damaged:  { dot: "#ef4444", bg: "#fee2e2" },
   missing:  { dot: "#a855f7", bg: "#f3e8ff" },
+};
+
+const getEmoji = (name = "") => {
+  const n = name.toLowerCase();
+  if (n.includes("solder"))       return "🔧";
+  if (n.includes("oscilloscope")) return "📡";
+  if (n.includes("arduino"))      return "🔌";
+  if (n.includes("multimeter"))   return "⚡";
+  if (n.includes("raspberry"))    return "💻";
+  if (n.includes("breadboard"))   return "🔲";
+  if (n.includes("wire"))         return "✂️";
+  if (n.includes("heat"))         return "🌡️";
+  if (n.includes("logic"))        return "🔍";
+  if (n.includes("power"))        return "🔋";
+  if (n.includes("esp"))          return "📶";
+  if (n.includes("crimp"))        return "🔩";
+  return "📦";
+};
+
+// Map raw API cupboard → UI shape
+// Uses color/bg_color from API, falls back to palette by index
+const mapCupboard = (cup, index) => {
+  const fallback = FALLBACK_PALETTES[index % FALLBACK_PALETTES.length];
+  return {
+    id:          cup.id,
+    name:        cup.name,
+    code:        cup.code,
+    description: cup.description || "",
+    color:       cup.color    || fallback.color,
+    bg:          cup.bg_color || fallback.bg,
+    places: (cup.places || []).map(place => ({
+      id:   place.id,
+      name: place.name,
+      items: (place.items || []).map(item => ({
+        id:     item.id,
+        name:   item.name,
+        code:   item.code,
+        qty:    item.quantity,
+        status: item.status,
+        emoji:  getEmoji(item.name),
+      })),
+    })),
+  };
 };
 
 function getTotalItems(cupboard) {
@@ -103,8 +87,7 @@ function ItemPopover({ item, onClose }) {
         animation: "slideUp 0.2s ease", overflow: "hidden"
       }}>
         <div style={{
-          padding: "20px 20px 16px",
-          borderBottom: "1px solid var(--border)",
+          padding: "20px 20px 16px", borderBottom: "1px solid var(--border)",
           display: "flex", alignItems: "center", gap: "14px"
         }}>
           <div style={{
@@ -151,29 +134,78 @@ function ItemPopover({ item, onClose }) {
 
 /* ─── Main StorageMap Component ─── */
 export default function StorageMap() {
-  const [selectedCupboard, setSelectedCupboard] = useState(STORAGE_DATA[0]);
+  const [cupboards,        setCupboards]        = useState([]);
+  const [loading,          setLoading]          = useState(true);
+  const [error,            setError]            = useState("");
+  const [selectedCupboard, setSelectedCupboard] = useState(null);
   const [expandedPlace,    setExpandedPlace]    = useState(null);
   const [selectedItem,     setSelectedItem]     = useState(null);
   const [search,           setSearch]           = useState("");
 
-  /* Search across all cupboards */
+  // ── Fetch cupboards with places + items nested ──
+  const fetchCupboards = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const data   = await CupboardService.getAll(); // returns array
+      const mapped = (data || []).map((cup, i) => mapCupboard(cup, i));
+      setCupboards(mapped);
+      if (mapped.length > 0) setSelectedCupboard(mapped[0]);
+    } catch (err) {
+      setError("Failed to load storage data. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchCupboards(); }, [fetchCupboards]);
+
+  // ── Derived stats ──
+  const totalItems     = cupboards.reduce((a, c) => a + getTotalItems(c), 0);
+  const totalAvailable = cupboards.reduce((a, c) => a + getAvailableItems(c), 0);
+  const totalCupboards = cupboards.length;
+  const totalPlaces    = cupboards.reduce((a, c) => a + c.places.length, 0);
+
+  // ── Search across all cupboards (client-side) ──
   const searchResults = search.trim().length > 1
-    ? STORAGE_DATA.flatMap(cup =>
+    ? cupboards.flatMap(cup =>
         cup.places.flatMap(place =>
           place.items
             .filter(item =>
               item.name.toLowerCase().includes(search.toLowerCase()) ||
               item.code.toLowerCase().includes(search.toLowerCase())
             )
-            .map(item => ({ ...item, cupboard: cup.name, place: place.name, cupboardColor: cup.color, cupboardBg: cup.bg }))
+            .map(item => ({
+              ...item,
+              cupboard:      cup.name,
+              place:         place.name,
+              cupboardColor: cup.color,
+              cupboardBg:    cup.bg,
+            }))
         )
       )
     : [];
 
-  const totalItems     = STORAGE_DATA.reduce((a, c) => a + getTotalItems(c), 0);
-  const totalAvailable = STORAGE_DATA.reduce((a, c) => a + getAvailableItems(c), 0);
-  const totalCupboards = STORAGE_DATA.length;
-  const totalPlaces    = STORAGE_DATA.reduce((a, c) => a + c.places.length, 0);
+  // ── Loading ──
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", flexDirection: "column", gap: "16px", color: "var(--text-muted)" }}>
+      <div style={{ width: "36px", height: "36px", border: "3px solid var(--border)", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <span style={{ fontSize: "13px" }}>Loading storage map...</span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+
+  // ── Error ──
+  if (error) return (
+    <div style={{ textAlign: "center", padding: "64px 20px", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: "40px", marginBottom: "12px" }}>⚠️</div>
+      <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "8px" }}>Failed to load</div>
+      <div style={{ fontSize: "13px", marginBottom: "20px" }}>{error}</div>
+      <button onClick={fetchCupboards} style={{ padding: "10px 24px", borderRadius: "9px", background: "#0f0f1a", color: "#fff", border: "none", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", fontSize: "13px" }}>
+        Try Again
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease forwards" }}>
@@ -187,10 +219,10 @@ export default function StorageMap() {
       {/* Summary Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "14px", marginBottom: "24px" }}>
         {[
-          { label: "Cupboards",  value: totalCupboards, icon: "🗄️",  bg: "#ede9fe" },
-          { label: "Places",     value: totalPlaces,    icon: "📍",  bg: "#d1fae5" },
-          { label: "Total Items",value: totalItems,     icon: "📦",  bg: "#fef3c7" },
-          { label: "Available",  value: totalAvailable, icon: "✅",  bg: "#d1fae5" },
+          { label: "Cupboards",   value: totalCupboards, icon: "🗄️", bg: "#ede9fe" },
+          { label: "Places",      value: totalPlaces,    icon: "📍", bg: "#d1fae5" },
+          { label: "Total Items", value: totalItems,     icon: "📦", bg: "#fef3c7" },
+          { label: "Available",   value: totalAvailable, icon: "✅", bg: "#d1fae5" },
         ].map((s, i) => (
           <div key={i} style={{
             background: "var(--surface)", border: "1.5px solid var(--border)",
@@ -220,11 +252,7 @@ export default function StorageMap() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search items by name or code across all storage..."
-          style={{
-            border: "none", background: "none", outline: "none",
-            fontSize: "13.5px", color: "var(--text-primary)",
-            fontFamily: "'DM Sans',sans-serif", flex: 1
-          }}
+          style={{ border: "none", background: "none", outline: "none", fontSize: "13.5px", color: "var(--text-primary)", fontFamily: "'DM Sans',sans-serif", flex: 1 }}
         />
         {search && (
           <button onClick={() => setSearch("")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "18px", lineHeight: 1 }}>×</button>
@@ -260,10 +288,9 @@ export default function StorageMap() {
                     <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>{item.code}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{
-                      fontSize: "11px", padding: "3px 10px", borderRadius: "100px",
-                      background: item.cupboardBg, color: item.cupboardColor, fontWeight: 600
-                    }}>📍 {item.cupboard} › {item.place}</span>
+                    <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "100px", background: item.cupboardBg, color: item.cupboardColor, fontWeight: 600 }}>
+                      📍 {item.cupboard} › {item.place}
+                    </span>
                     <StatusBadge status={item.status} />
                   </div>
                 </div>
@@ -282,7 +309,7 @@ export default function StorageMap() {
             <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "4px" }}>
               Select Cupboard
             </div>
-            {STORAGE_DATA.map((cup, i) => {
+            {cupboards.map((cup, i) => {
               const available = getAvailableItems(cup);
               const total     = getTotalItems(cup);
               const pct       = total > 0 ? Math.round((available / total) * 100) : 0;
@@ -311,9 +338,7 @@ export default function StorageMap() {
                       <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{cup.code} · {cup.places.length} places</div>
                     </div>
                   </div>
-
-                  {/* Availability bar */}
-                  <div style={{ marginBottom: "6px" }}>
+                  <div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                       <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Available</span>
                       <span style={{ fontSize: "10px", fontWeight: 600, color: cup.color }}>{available}/{total}</span>
@@ -346,7 +371,7 @@ export default function StorageMap() {
                 }}>🗄️</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "20px", color: "var(--text-primary)" }}>{selectedCupboard.name}</div>
-                  <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "2px" }}>{selectedCupboard.description}</div>
+                  <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "2px" }}>{selectedCupboard.description || selectedCupboard.code}</div>
                 </div>
                 <div style={{ display: "flex", gap: "16px" }}>
                   {[
@@ -369,20 +394,14 @@ export default function StorageMap() {
                   return (
                     <div key={place.id} style={{
                       background: "var(--surface)", border: "1.5px solid var(--border)",
-                      borderRadius: "14px", overflow: "hidden",
-                      transition: "border-color 0.2s",
+                      borderRadius: "14px", overflow: "hidden", transition: "border-color 0.2s",
                       animation: `fadeUp 0.3s ease ${pi * 0.07}s forwards`, opacity: 0
                     }}>
-                      {/* Place Header — clickable to expand */}
-                      <div
-                        onClick={() => setExpandedPlace(isExpanded ? null : place.id)}
-                        style={{
-                          padding: "14px 18px", display: "flex",
-                          alignItems: "center", gap: "12px", cursor: "pointer",
-                          background: isExpanded ? selectedCupboard.bg : "transparent",
-                          transition: "background 0.2s"
-                        }}
-                      >
+                      <div onClick={() => setExpandedPlace(isExpanded ? null : place.id)} style={{
+                        padding: "14px 18px", display: "flex", alignItems: "center", gap: "12px",
+                        cursor: "pointer", background: isExpanded ? selectedCupboard.bg : "transparent",
+                        transition: "background 0.2s"
+                      }}>
                         <div style={{
                           width: "32px", height: "32px", borderRadius: "8px",
                           background: isExpanded ? selectedCupboard.color : "var(--surface2)",
@@ -393,8 +412,6 @@ export default function StorageMap() {
                           <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "14px", color: "var(--text-primary)" }}>{place.name}</div>
                           <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px" }}>{place.items.length} item{place.items.length !== 1 ? "s" : ""} stored</div>
                         </div>
-
-                        {/* Item status dots */}
                         <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
                           {place.items.map(item => (
                             <div key={item.id} title={`${item.name} — ${item.status}`} style={{
@@ -403,8 +420,6 @@ export default function StorageMap() {
                             }} />
                           ))}
                         </div>
-
-                        {/* Expand chevron */}
                         <div style={{
                           color: "var(--text-muted)", fontSize: "16px",
                           transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
@@ -412,7 +427,6 @@ export default function StorageMap() {
                         }}>▾</div>
                       </div>
 
-                      {/* Expanded Items */}
                       {isExpanded && (
                         <div style={{ borderTop: "1px solid var(--border)" }}>
                           {place.items.length === 0 ? (
@@ -421,15 +435,12 @@ export default function StorageMap() {
                             </div>
                           ) : (
                             place.items.map((item, ii) => (
-                              <div
-                                key={item.id}
-                                onClick={() => setSelectedItem(item)}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: "14px",
-                                  padding: "13px 18px",
-                                  borderBottom: ii < place.items.length - 1 ? "1px solid var(--border)" : "none",
-                                  cursor: "pointer", transition: "background 0.15s"
-                                }}
+                              <div key={item.id} onClick={() => setSelectedItem(item)} style={{
+                                display: "flex", alignItems: "center", gap: "14px",
+                                padding: "13px 18px",
+                                borderBottom: ii < place.items.length - 1 ? "1px solid var(--border)" : "none",
+                                cursor: "pointer", transition: "background 0.15s"
+                              }}
                                 onMouseEnter={e => e.currentTarget.style.background = "var(--surface2)"}
                                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                               >
@@ -439,12 +450,10 @@ export default function StorageMap() {
                                   fontSize: "16px", display: "flex", alignItems: "center",
                                   justifyContent: "center", flexShrink: 0
                                 }}>{item.emoji}</div>
-
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 600, fontSize: "13.5px", color: "var(--text-primary)" }}>{item.name}</div>
                                   <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{item.code}</div>
                                 </div>
-
                                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                                   <div style={{ textAlign: "right" }}>
                                     <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "18px", color: "var(--text-primary)" }}>{item.qty}</div>
@@ -469,10 +478,13 @@ export default function StorageMap() {
         </div>
       )}
 
-      {/* Item Detail Modal */}
       {selectedItem && (
         <ItemPopover item={selectedItem} onClose={() => setSelectedItem(null)} />
       )}
+
+      <style>{`
+        @keyframes fadeUp { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
+      `}</style>
     </div>
   );
 }
