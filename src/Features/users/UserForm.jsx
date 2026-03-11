@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { UserService } from "../../services/otherServices";
 
 const ROLES = [
   { value: "admin", label: "Administrator", desc: "Full access to all features including user management and audit log", color: "#6366f1", bg: "#ede9fe" },
@@ -22,8 +23,7 @@ function Field({ label, required, error, children }) {
 }
 
 const inputStyle = (hasError) => ({
-  width: "100%", padding: "11px 14px",
-  background: "#fff",
+  width: "100%", padding: "11px 14px", background: "#fff",
   border: `1.5px solid ${hasError ? "#ef4444" : "var(--border)"}`,
   borderRadius: "9px", fontFamily: "'DM Sans', sans-serif",
   fontSize: "13.5px", color: "var(--text-primary)",
@@ -74,31 +74,33 @@ function SuccessScreen({ user, isEdit, onClose }) {
 
 export default function UserForm({ user = null, onClose, onSuccess }) {
   const isEdit = !!user;
-  const [step,    setStep]    = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [errors,  setErrors]  = useState({});
+  const [step,     setStep]     = useState(1);
+  const [loading,  setLoading]  = useState(false);
+  const [errors,   setErrors]   = useState({});
+  const [apiError, setApiError] = useState("");
 
   const [form, setForm] = useState({
-    name:     user?.name     || "",
-    email:    user?.email    || "",
-    role:     user?.role     || "staff",
-    password: "",
+    name:            user?.name  || "",
+    email:           user?.email || "",
+    role:            user?.role  || "staff",
+    password:        "",
     confirmPassword: "",
   });
 
   const set = (key, val) => {
     setForm(prev => ({ ...prev, [key]: val }));
     if (errors[key]) setErrors(prev => ({ ...prev, [key]: "" }));
+    setApiError("");
   };
 
   const validate = () => {
     const e = {};
     if (!form.name.trim())  e.name  = "Full name is required";
     if (!form.email.trim()) e.email = "Email address is required";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Enter a valid email address";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Enter a valid email address";
     if (!isEdit) {
-      if (!form.password)             e.password = "Password is required";
-      if (form.password.length < 8)   e.password = "Password must be at least 8 characters";
+      if (!form.password)                e.password = "Password is required";
+      else if (form.password.length < 8) e.password = "Password must be at least 8 characters";
       if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match";
     }
     return e;
@@ -110,14 +112,37 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
     setStep(2);
   };
 
-  const handleSubmit = () => {
+  // ── Real API call ──
+  const handleSubmit = async () => {
     setLoading(true);
-    // Simulate API — replace with POST /api/users or PUT /api/users/:id later
-    setTimeout(() => {
-      setLoading(false);
+    setApiError("");
+    try {
+      const payload = {
+        name:  form.name,
+        email: form.email,
+        role:  form.role,
+        ...(!isEdit && {
+          password:              form.password,
+          password_confirmation: form.confirmPassword,
+        }),
+      };
+
+      if (isEdit) {
+        await UserService.update(user.id, payload);
+      } else {
+        await UserService.create(payload);
+      }
+
       setStep(3);
       onSuccess && onSuccess(form);
-    }, 1200);
+    } catch (err) {
+      const msg = err.response?.data?.message
+        || Object.values(err.response?.data?.errors || {})[0]?.[0]
+        || "Something went wrong. Please try again.";
+      setApiError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const selectedRole = ROLES.find(r => r.value === form.role);
@@ -136,8 +161,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
         animation: "slideUp 0.25s ease",
         maxHeight: "90vh", overflowY: "auto"
       }}>
-
-        {/* Success */}
         {step === 3 && <SuccessScreen user={form} isEdit={isEdit} onClose={onClose} />}
 
         {step !== 3 && (
@@ -160,7 +183,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                   {isEdit ? `Editing: ${user.name}` : "Admin access only — no self-signup allowed"}
                 </div>
               </div>
-              {/* Step indicators */}
               <div style={{ display: "flex", gap: "6px" }}>
                 {[1, 2].map(s => (
                   <div key={s} style={{
@@ -176,7 +198,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
             {/* STEP 1 — Form */}
             {step === 1 && (
               <div style={{ padding: "22px 24px" }}>
-
                 <Field label="Full Name" required error={errors.name}>
                   <input style={inputStyle(errors.name)} placeholder="e.g. Kasun Perera"
                     value={form.name} onChange={e => set("name", e.target.value)}
@@ -193,7 +214,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                   />
                 </Field>
 
-                {/* Role Selector */}
                 <Field label="Role" required>
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {ROLES.map(r => (
@@ -230,7 +250,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                   </div>
                 </Field>
 
-                {/* Password fields — only for create */}
                 {!isEdit && (
                   <>
                     <Field label="Password" required error={errors.password}>
@@ -240,7 +259,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                         onBlur={e => e.target.style.borderColor = errors.password ? "#ef4444" : "var(--border)"}
                       />
                     </Field>
-
                     <Field label="Confirm Password" required error={errors.confirmPassword}>
                       <input style={inputStyle(errors.confirmPassword)} type="password" placeholder="Re-enter password"
                         value={form.confirmPassword} onChange={e => set("confirmPassword", e.target.value)}
@@ -251,7 +269,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                   </>
                 )}
 
-                {/* Password hint for edit */}
                 {isEdit && (
                   <div style={{
                     display: "flex", gap: "10px", alignItems: "flex-start",
@@ -260,7 +277,7 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                   }}>
                     <span>🔒</span>
                     <span style={{ fontSize: "12px", color: "#92400e", lineHeight: 1.6 }}>
-                      Password is not shown for security. Leave blank to keep the existing password unchanged.
+                      Password is not shown for security. Leave blank to keep existing password unchanged.
                     </span>
                   </div>
                 )}
@@ -312,7 +329,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                   ))}
                 </div>
 
-                {/* Role permission summary */}
                 <div style={{
                   display: "flex", gap: "10px", alignItems: "flex-start",
                   background: selectedRole?.bg, border: `1px solid ${selectedRole?.color}40`,
@@ -324,8 +340,17 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
                   </span>
                 </div>
 
+                {/* API Error */}
+                {apiError && (
+                  <div style={{
+                    background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)",
+                    borderRadius: "10px", padding: "12px 14px", marginBottom: "16px",
+                    fontSize: "13px", color: "#ef4444", display: "flex", alignItems: "center", gap: "8px"
+                  }}>⚠️ {apiError}</div>
+                )}
+
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <button onClick={() => setStep(1)} style={{
+                  <button onClick={() => { setStep(1); setApiError(""); }} style={{
                     flex: 1, padding: "12px", background: "var(--surface2)",
                     border: "1.5px solid var(--border)", borderRadius: "10px",
                     cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
@@ -357,7 +382,6 @@ export default function UserForm({ user = null, onClose, onSuccess }) {
           </>
         )}
       </div>
-
       <style>{`
         @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }

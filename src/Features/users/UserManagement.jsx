@@ -1,17 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { UserService } from "../../services/otherServices";
 import UserForm from "./UserForm";
 
-/* ─── Mock Data (replace with GET /api/users later) ─── */
-const INITIAL_USERS = [
-  { id: 1, name: "Ashan Fernando",  email: "ashan@ceyntics.com",   role: "admin", status: "active",   createdAt: "Jan 10, 2026", lastLogin: "Mar 09, 2026", avatar: "AF" },
-  { id: 2, name: "Kasun Perera",    email: "kasun@ceyntics.com",   role: "staff", status: "active",   createdAt: "Jan 15, 2026", lastLogin: "Mar 08, 2026", avatar: "KP" },
-  { id: 3, name: "Nimali Silva",    email: "nimali@ceyntics.com",  role: "staff", status: "active",   createdAt: "Feb 01, 2026", lastLogin: "Mar 07, 2026", avatar: "NS" },
-  { id: 4, name: "Ruwan Jayasinghe",email: "ruwan@ceyntics.com",   role: "staff", status: "active",   createdAt: "Feb 12, 2026", lastLogin: "Mar 05, 2026", avatar: "RJ" },
-  { id: 5, name: "Dilani Wickrama", email: "dilani@ceyntics.com",  role: "admin", status: "active",   createdAt: "Jan 20, 2026", lastLogin: "Mar 06, 2026", avatar: "DW" },
-  { id: 6, name: "Tharindu Madush", email: "tharindu@ceyntics.com",role: "staff", status: "inactive", createdAt: "Mar 01, 2026", lastLogin: "Mar 01, 2026", avatar: "TM" },
-];
-
 const AVATAR_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4"];
+
+const formatDate = (d) => d
+  ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  : "Never";
+
+const getInitials = (name = "") =>
+  name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
 function Avatar({ initials, index, size = 36 }) {
   const color = AVATAR_COLORS[index % AVATAR_COLORS.length];
@@ -51,11 +49,21 @@ function StatusDot({ status }) {
 
 /* ── Delete Confirm Modal ── */
 function DeleteConfirm({ user, onClose, onConfirm }) {
-  const [loading, setLoading] = useState(false);
-  const handle = () => {
+  const [loading,  setLoading]  = useState(false);
+  const [apiError, setApiError] = useState("");
+
+  const handle = async () => {
     setLoading(true);
-    setTimeout(() => { setLoading(false); onConfirm(user.id); }, 900);
+    setApiError("");
+    try {
+      await UserService.delete(user.id);
+      onConfirm(user.id);
+    } catch (err) {
+      setApiError(err.response?.data?.message || "Failed to delete user.");
+      setLoading(false);
+    }
   };
+
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
@@ -83,11 +91,18 @@ function DeleteConfirm({ user, onClose, onConfirm }) {
         </div>
         <div style={{
           background: "#fee2e2", border: "1px solid #fca5a5",
-          borderRadius: "10px", padding: "10px 14px", marginBottom: "22px",
+          borderRadius: "10px", padding: "10px 14px", marginBottom: "16px",
           fontSize: "12px", color: "#991b1b", lineHeight: 1.6
         }}>
           ⚠️ This will be permanently logged in the audit trail.
         </div>
+        {apiError && (
+          <div style={{
+            background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)",
+            borderRadius: "10px", padding: "10px 14px", marginBottom: "14px",
+            fontSize: "12px", color: "#ef4444"
+          }}>⚠️ {apiError}</div>
+        )}
         <div style={{ display: "flex", gap: "10px" }}>
           <button onClick={onClose} style={{
             flex: 1, padding: "12px", background: "var(--surface2)",
@@ -96,7 +111,7 @@ function DeleteConfirm({ user, onClose, onConfirm }) {
             fontSize: "13px", color: "var(--text-secondary)"
           }}>Cancel</button>
           <button onClick={handle} disabled={loading} style={{
-            flex: 2, padding: "12px", background: loading ? "#ef4444" : "#ef4444",
+            flex: 2, padding: "12px", background: "#ef4444",
             color: "#fff", border: "none", borderRadius: "10px",
             fontFamily: "'Syne',sans-serif", fontWeight: 700,
             fontSize: "13px", cursor: loading ? "not-allowed" : "pointer",
@@ -109,23 +124,29 @@ function DeleteConfirm({ user, onClose, onConfirm }) {
           </button>
         </div>
       </div>
-      <style>{`
-        @keyframes fadeIn  { from{opacity:0}to{opacity:1} }
-        @keyframes slideUp { from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)} }
-        @keyframes spin    { to{transform:rotate(360deg)} }
-      `}</style>
+      <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
 
 /* ── Toggle Status Confirm ── */
 function ToggleConfirm({ user, onClose, onConfirm }) {
-  const [loading, setLoading] = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [apiError, setApiError] = useState("");
   const isDeactivating = user.status === "active";
-  const handle = () => {
+
+  const handle = async () => {
     setLoading(true);
-    setTimeout(() => { setLoading(false); onConfirm(user.id); }, 900);
+    setApiError("");
+    try {
+      await UserService.toggleStatus(user.id);
+      onConfirm(user.id);
+    } catch (err) {
+      setApiError(err.response?.data?.message || "Failed to update status.");
+      setLoading(false);
+    }
   };
+
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
@@ -150,9 +171,16 @@ function ToggleConfirm({ user, onClose, onConfirm }) {
         </div>
         <div style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "24px", lineHeight: 1.7 }}>
           {isDeactivating
-            ? <>Deactivating <strong style={{ color: "var(--text-primary)" }}>{user.name}</strong> will revoke their login access immediately.</>
+            ? <><strong style={{ color: "var(--text-primary)" }}>{user.name}</strong>'s login access will be revoked immediately.</>
             : <>Activating <strong style={{ color: "var(--text-primary)" }}>{user.name}</strong> will restore their login access.</>}
         </div>
+        {apiError && (
+          <div style={{
+            background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)",
+            borderRadius: "10px", padding: "10px 14px", marginBottom: "14px",
+            fontSize: "12px", color: "#ef4444"
+          }}>⚠️ {apiError}</div>
+        )}
         <div style={{ display: "flex", gap: "10px" }}>
           <button onClick={onClose} style={{
             flex: 1, padding: "12px", background: "var(--surface2)",
@@ -184,7 +212,8 @@ function ToggleConfirm({ user, onClose, onConfirm }) {
    MAIN USER MANAGEMENT PAGE
 ══════════════════════════════════════════ */
 export default function UserManagement() {
-  const [users,        setUsers]        = useState(INITIAL_USERS);
+  const [users,        setUsers]        = useState([]);
+  const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState("");
   const [roleFilter,   setRoleFilter]   = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -193,6 +222,33 @@ export default function UserManagement() {
   const [deleteUser,   setDeleteUser]   = useState(null);
   const [toggleUser,   setToggleUser]   = useState(null);
 
+  // ── Fetch users from API ──
+  const fetchUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await UserService.getAll({ per_page: 100 });
+      setUsers(
+        (res.data || []).map(u => ({
+          id:        u.id,
+          name:      u.name,
+          email:     u.email,
+          role:      u.role,
+          status:    u.status || "active",
+          createdAt: formatDate(u.created_at),
+          lastLogin: formatDate(u.last_login_at),
+          avatar:    getInitials(u.name),
+        }))
+      );
+    } catch (err) {
+      console.error("Failed to fetch users:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  // ── Derived ──
   const filtered = users.filter(u => {
     const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
                         u.email.toLowerCase().includes(search.toLowerCase());
@@ -201,34 +257,27 @@ export default function UserManagement() {
     return matchSearch && matchRole && matchStatus;
   });
 
-  const adminCnt  = users.filter(u => u.role === "admin").length;
-  const staffCnt  = users.filter(u => u.role === "staff").length;
+  const adminCnt  = users.filter(u => u.role   === "admin").length;
+  const staffCnt  = users.filter(u => u.role   === "staff").length;
   const activeCnt = users.filter(u => u.status === "active").length;
 
-  const handleCreateSuccess = (formData) => {
-    const newUser = {
-      id: Date.now(), name: formData.name, email: formData.email,
-      role: formData.role, status: "active",
-      createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      lastLogin: "Never", avatar: formData.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
-    };
-    setUsers(prev => [...prev, newUser]);
+  // ── Handlers — optimistic UI + API already called inside modals ──
+  const handleCreateSuccess = () => {
     setShowForm(false);
+    fetchUsers(); // refresh from API
   };
 
-  const handleEditSuccess = (formData) => {
-    setUsers(prev => prev.map(u =>
-      u.id === editUser.id ? { ...u, name: formData.name, email: formData.email, role: formData.role } : u
-    ));
+  const handleEditSuccess = () => {
     setEditUser(null);
+    fetchUsers();
   };
 
-  const handleDelete = (id) => {
+  const handleDeleteConfirm = (id) => {
     setUsers(prev => prev.filter(u => u.id !== id));
     setDeleteUser(null);
   };
 
-  const handleToggle = (id) => {
+  const handleToggleConfirm = (id) => {
     setUsers(prev => prev.map(u =>
       u.id === id ? { ...u, status: u.status === "active" ? "inactive" : "active" } : u
     ));
@@ -264,10 +313,10 @@ export default function UserManagement() {
       {/* Summary Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "14px", marginBottom: "24px" }}>
         {[
-          { label: "Total Users",  value: users.length, icon: "👥", bg: "#ede9fe", color: "#6366f1" },
-          { label: "Admins",       value: adminCnt,     icon: "🛡️", bg: "#fee2e2", color: "#ef4444" },
-          { label: "Staff",        value: staffCnt,     icon: "👤", bg: "#d1fae5", color: "#10b981" },
-          { label: "Active",       value: activeCnt,    icon: "✅", bg: "#fef3c7", color: "#f59e0b" },
+          { label: "Total Users", value: users.length, icon: "👥", bg: "#ede9fe", color: "#6366f1" },
+          { label: "Admins",      value: adminCnt,     icon: "🛡️", bg: "#fee2e2", color: "#ef4444" },
+          { label: "Staff",       value: staffCnt,     icon: "👤", bg: "#d1fae5", color: "#10b981" },
+          { label: "Active",      value: activeCnt,    icon: "✅", bg: "#fef3c7", color: "#f59e0b" },
         ].map((s, i) => (
           <div key={i} style={{
             background: "var(--surface)", border: "1.5px solid var(--border)",
@@ -277,7 +326,9 @@ export default function UserManagement() {
           }}>
             <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: s.bg, fontSize: "18px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{s.icon}</div>
             <div>
-              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "24px", color: "var(--text-primary)", lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "24px", color: "var(--text-primary)", lineHeight: 1 }}>
+                {loading ? "…" : s.value}
+              </div>
               <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.8px", marginTop: "3px" }}>{s.label}</div>
             </div>
           </div>
@@ -286,7 +337,6 @@ export default function UserManagement() {
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap", alignItems: "center" }}>
-        {/* Search */}
         <div style={{
           display: "flex", alignItems: "center", gap: "8px",
           background: "var(--surface)", border: "1.5px solid var(--border)",
@@ -298,7 +348,6 @@ export default function UserManagement() {
           {search && <button onClick={() => setSearch("")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "18px", lineHeight: 1 }}>×</button>}
         </div>
 
-        {/* Role filter */}
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} style={{
           padding: "9px 14px", borderRadius: "10px", border: "1.5px solid var(--border)",
           background: "var(--surface)", color: "var(--text-primary)",
@@ -309,7 +358,6 @@ export default function UserManagement() {
           <option value="staff">Staff</option>
         </select>
 
-        {/* Status filter */}
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{
           padding: "9px 14px", borderRadius: "10px", border: "1.5px solid var(--border)",
           background: "var(--surface)", color: "var(--text-primary)",
@@ -321,13 +369,17 @@ export default function UserManagement() {
         </select>
 
         <span style={{ fontSize: "12px", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-          {filtered.length} user{filtered.length !== 1 ? "s" : ""}
+          {loading ? "Loading..." : `${filtered.length} user${filtered.length !== 1 ? "s" : ""}`}
         </span>
       </div>
 
       {/* Users Table */}
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "64px 20px", color: "var(--text-muted)", fontSize: "13px" }}>
+            Loading users...
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: "64px 20px", color: "var(--text-muted)" }}>
             <div style={{ fontSize: "36px", marginBottom: "12px" }}>👤</div>
             <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "18px", fontWeight: 700, color: "var(--text-primary)", marginBottom: "6px" }}>No users found</div>
@@ -346,72 +398,55 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((user, i) => (
-                <tr key={user.id} style={{ animation: `fadeUp 0.3s ease ${i * 0.05}s forwards`, opacity: 0 }}>
+              {filtered.map((u, i) => (
+                <tr key={u.id} style={{ animation: `fadeUp 0.3s ease ${i * 0.05}s forwards`, opacity: 0 }}>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <Avatar initials={user.avatar} index={i} />
+                      <Avatar initials={u.avatar} index={i} />
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--text-primary)" }}>{user.name}</div>
-                        <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "1px" }}>{user.email}</div>
+                        <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--text-primary)" }}>{u.name}</div>
+                        <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "1px" }}>{u.email}</div>
                       </div>
                     </div>
                   </td>
-                  <td><RoleBadge role={user.role} /></td>
-                  <td><StatusDot status={user.status} /></td>
-                  <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{user.createdAt}</td>
-                  <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{user.lastLogin}</td>
+                  <td><RoleBadge role={u.role} /></td>
+                  <td><StatusDot status={u.status} /></td>
+                  <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{u.createdAt}</td>
+                  <td style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{u.lastLogin}</td>
                   <td>
                     <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
-                      {/* Edit */}
-                      <button
-                        onClick={() => setEditUser(user)}
-                        title="Edit user"
-                        style={{
-                          padding: "6px 12px", borderRadius: "7px",
-                          border: "1.5px solid var(--border)", background: "var(--surface)",
-                          cursor: "pointer", fontSize: "12px", fontWeight: 500,
-                          color: "var(--text-secondary)", fontFamily: "'DM Sans',sans-serif",
-                          transition: "all 0.15s", display: "flex", alignItems: "center", gap: "4px"
-                        }}
+                      <button onClick={() => setEditUser(u)} title="Edit user" style={{
+                        padding: "6px 12px", borderRadius: "7px",
+                        border: "1.5px solid var(--border)", background: "var(--surface)",
+                        cursor: "pointer", fontSize: "12px", fontWeight: 500,
+                        color: "var(--text-secondary)", fontFamily: "'DM Sans',sans-serif",
+                        transition: "all 0.15s", display: "flex", alignItems: "center", gap: "4px"
+                      }}
                         onMouseEnter={e => { e.currentTarget.style.background = "#ede9fe"; e.currentTarget.style.borderColor = "#6366f1"; e.currentTarget.style.color = "#6366f1"; }}
                         onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
-                      >
-                        ✏️ Edit
-                      </button>
+                      >✏️ Edit</button>
 
-                      {/* Toggle Active/Inactive */}
-                      <button
-                        onClick={() => setToggleUser(user)}
-                        title={user.status === "active" ? "Deactivate" : "Activate"}
-                        style={{
-                          padding: "6px 12px", borderRadius: "7px",
-                          border: "1.5px solid var(--border)", background: "var(--surface)",
-                          cursor: "pointer", fontSize: "12px", fontWeight: 500,
-                          color: "var(--text-secondary)", fontFamily: "'DM Sans',sans-serif",
-                          transition: "all 0.15s", display: "flex", alignItems: "center", gap: "4px"
-                        }}
+                      <button onClick={() => setToggleUser(u)} title={u.status === "active" ? "Deactivate" : "Activate"} style={{
+                        padding: "6px 12px", borderRadius: "7px",
+                        border: "1.5px solid var(--border)", background: "var(--surface)",
+                        cursor: "pointer", fontSize: "12px", fontWeight: 500,
+                        color: "var(--text-secondary)", fontFamily: "'DM Sans',sans-serif",
+                        transition: "all 0.15s", display: "flex", alignItems: "center", gap: "4px"
+                      }}
                         onMouseEnter={e => {
-                          const isActive = user.status === "active";
-                          e.currentTarget.style.background = isActive ? "#fee2e2" : "#d1fae5";
-                          e.currentTarget.style.borderColor = isActive ? "#ef4444" : "#10b981";
-                          e.currentTarget.style.color = isActive ? "#ef4444" : "#10b981";
+                          const isActive = u.status === "active";
+                          e.currentTarget.style.background   = isActive ? "#fee2e2" : "#d1fae5";
+                          e.currentTarget.style.borderColor  = isActive ? "#ef4444" : "#10b981";
+                          e.currentTarget.style.color        = isActive ? "#ef4444" : "#10b981";
                         }}
                         onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
-                      >
-                        {user.status === "active" ? "🔒 Deactivate" : "🔓 Activate"}
-                      </button>
+                      >{u.status === "active" ? "🔒 Deactivate" : "🔓 Activate"}</button>
 
-                      {/* Delete */}
-                      <button
-                        onClick={() => setDeleteUser(user)}
-                        title="Delete user"
-                        style={{
-                          padding: "6px 10px", borderRadius: "7px",
-                          border: "1.5px solid var(--border)", background: "var(--surface)",
-                          cursor: "pointer", fontSize: "13px",
-                          transition: "all 0.15s"
-                        }}
+                      <button onClick={() => setDeleteUser(u)} title="Delete user" style={{
+                        padding: "6px 10px", borderRadius: "7px",
+                        border: "1.5px solid var(--border)", background: "var(--surface)",
+                        cursor: "pointer", fontSize: "13px", transition: "all 0.15s"
+                      }}
                         onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#ef4444"; }}
                         onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; }}
                       >🗑️</button>
@@ -425,22 +460,12 @@ export default function UserManagement() {
       </div>
 
       {/* ── Modals ── */}
-      {showForm && (
-        <UserForm onClose={() => setShowForm(false)} onSuccess={handleCreateSuccess} />
-      )}
-      {editUser && (
-        <UserForm user={editUser} onClose={() => setEditUser(null)} onSuccess={handleEditSuccess} />
-      )}
-      {deleteUser && (
-        <DeleteConfirm user={deleteUser} onClose={() => setDeleteUser(null)} onConfirm={handleDelete} />
-      )}
-      {toggleUser && (
-        <ToggleConfirm user={toggleUser} onClose={() => setToggleUser(null)} onConfirm={handleToggle} />
-      )}
+      {showForm   && <UserForm onClose={() => setShowForm(false)} onSuccess={handleCreateSuccess} />}
+      {editUser   && <UserForm user={editUser} onClose={() => setEditUser(null)} onSuccess={handleEditSuccess} />}
+      {deleteUser && <DeleteConfirm user={deleteUser} onClose={() => setDeleteUser(null)} onConfirm={handleDeleteConfirm} />}
+      {toggleUser && <ToggleConfirm user={toggleUser} onClose={() => setToggleUser(null)} onConfirm={handleToggleConfirm} />}
 
-      <style>{`
-        @keyframes fadeUp { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
-      `}</style>
+      <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
     </div>
   );
 }

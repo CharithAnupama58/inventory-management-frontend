@@ -1,36 +1,5 @@
-import { useState } from "react";
-import StatusBadge from "../../Components/common/StatusBadge";
-
-/* ─── Mock Data ─── */
-const INITIAL_CUPBOARDS = [
-  {
-    id: 1, name: "Cupboard A", code: "CUP-A", color: "#6366f1", bg: "#ede9fe",
-    description: "Main electronics storage", location: "Lab Room 101",
-    places: [
-      { id: 1, name: "Shelf 1", capacity: 10, itemCount: 2 },
-      { id: 2, name: "Shelf 2", capacity: 10, itemCount: 2 },
-      { id: 3, name: "Shelf 3", capacity: 10, itemCount: 1 },
-    ]
-  },
-  {
-    id: 2, name: "Cupboard B", code: "CUP-B", color: "#10b981", bg: "#d1fae5",
-    description: "Test & measurement equipment", location: "Lab Room 101",
-    places: [
-      { id: 4, name: "Shelf 1", capacity: 8, itemCount: 1 },
-      { id: 5, name: "Shelf 2", capacity: 8, itemCount: 1 },
-      { id: 6, name: "Shelf 3", capacity: 8, itemCount: 1 },
-    ]
-  },
-  {
-    id: 3, name: "Cupboard C", code: "CUP-C", color: "#f59e0b", bg: "#fef3c7",
-    description: "Hand tools & accessories", location: "Lab Room 102",
-    places: [
-      { id: 7, name: "Shelf 1", capacity: 12, itemCount: 2 },
-      { id: 8, name: "Shelf 2", capacity: 12, itemCount: 1 },
-      { id: 9, name: "Shelf 3", capacity: 12, itemCount: 1 },
-    ]
-  },
-];
+import { useState, useEffect, useCallback } from "react";
+import { CupboardService } from "../../services/otherServices";
 
 const COLORS = [
   { value: "#6366f1", bg: "#ede9fe", label: "Indigo"  },
@@ -43,7 +12,6 @@ const COLORS = [
   { value: "#0ea5e9", bg: "#e0f2fe", label: "Blue"    },
 ];
 
-/* ── Helpers ── */
 const inputStyle = (err) => ({
   width: "100%", padding: "11px 14px", background: "#fff",
   border: `1.5px solid ${err ? "#ef4444" : "var(--border)"}`,
@@ -73,20 +41,22 @@ function Field({ label, required, error, children }) {
 ══════════════════════ */
 function CupboardForm({ cupboard, onClose, onSuccess }) {
   const isEdit = !!cupboard;
-  const [loading, setLoading] = useState(false);
-  const [errors,  setErrors]  = useState({});
+  const [loading,  setLoading]  = useState(false);
+  const [errors,   setErrors]   = useState({});
+  const [apiError, setApiError] = useState("");
   const [form, setForm] = useState({
     name:        cupboard?.name        || "",
     code:        cupboard?.code        || "",
     description: cupboard?.description || "",
     location:    cupboard?.location    || "",
     color:       cupboard?.color       || "#6366f1",
-    bg:          cupboard?.bg          || "#ede9fe",
+    bg_color:    cupboard?.bg_color    || "#ede9fe",
   });
 
   const set = (key, val) => {
     setForm(p => ({ ...p, [key]: val }));
     if (errors[key]) setErrors(p => ({ ...p, [key]: "" }));
+    setApiError("");
   };
 
   const validate = () => {
@@ -96,11 +66,26 @@ function CupboardForm({ cupboard, onClose, onSuccess }) {
     return e;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); onSuccess(form); }, 900);
+    setApiError("");
+    try {
+      if (isEdit) {
+        await CupboardService.update(cupboard.id, form);
+      } else {
+        await CupboardService.create(form);
+      }
+      onSuccess();
+    } catch (err) {
+      const msg = err.response?.data?.message
+        || Object.values(err.response?.data?.errors || {})[0]?.[0]
+        || "Something went wrong.";
+      setApiError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -117,16 +102,11 @@ function CupboardForm({ cupboard, onClose, onSuccess }) {
         animation: "slideUp 0.25s ease",
         maxHeight: "90vh", overflowY: "auto"
       }}>
-        {/* Header */}
         <div style={{
           padding: "22px 24px 18px", borderBottom: "1px solid var(--border)",
           display: "flex", alignItems: "center", gap: "14px"
         }}>
-          <div style={{
-            width: "44px", height: "44px", borderRadius: "11px",
-            background: form.bg, fontSize: "20px",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
-          }}>🗄️</div>
+          <div style={{ width: "44px", height: "44px", borderRadius: "11px", background: form.bg_color, fontSize: "20px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>🗄️</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "16px", color: "var(--text-primary)" }}>
               {isEdit ? "Edit Cupboard" : "Add New Cupboard"}
@@ -172,13 +152,11 @@ function CupboardForm({ cupboard, onClose, onSuccess }) {
             />
           </Field>
 
-          {/* Color Picker */}
           <Field label="Color Theme">
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
               {COLORS.map(c => (
-                <div key={c.value} onClick={() => { set("color", c.value); set("bg", c.bg); }}
-                  title={c.label}
-                  style={{
+                <div key={c.value} onClick={() => { set("color", c.value); set("bg_color", c.bg); }}
+                  title={c.label} style={{
                     width: "32px", height: "32px", borderRadius: "8px",
                     background: c.value, cursor: "pointer",
                     border: `3px solid ${form.color === c.value ? "#0f0f1a" : "transparent"}`,
@@ -189,27 +167,25 @@ function CupboardForm({ cupboard, onClose, onSuccess }) {
             </div>
           </Field>
 
+          {apiError && (
+            <div style={{ background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", fontSize: "13px", color: "#ef4444" }}>
+              ⚠️ {apiError}
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-            <button onClick={onClose} style={{
-              flex: 1, padding: "12px", background: "var(--surface2)",
-              border: "1.5px solid var(--border)", borderRadius: "10px",
-              cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-              fontSize: "13px", color: "var(--text-secondary)"
-            }}>Cancel</button>
+            <button onClick={onClose} style={{ flex: 1, padding: "12px", background: "var(--surface2)", border: "1.5px solid var(--border)", borderRadius: "10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", fontSize: "13px", color: "var(--text-secondary)" }}>Cancel</button>
             <button onClick={handleSubmit} disabled={loading} style={{
               flex: 2, padding: "12px", background: loading ? form.color : "#0f0f1a",
               color: "#fff", border: "none", borderRadius: "10px",
-              fontFamily: "'Syne',sans-serif", fontWeight: 700,
-              fontSize: "13px", cursor: loading ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-              transition: "background 0.15s"
+              fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "13px",
+              cursor: loading ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "background 0.15s"
             }}
               onMouseEnter={e => { if (!loading) e.currentTarget.style.background = form.color; }}
               onMouseLeave={e => { if (!loading) e.currentTarget.style.background = "#0f0f1a"; }}
             >
-              {loading ? (
-                <><div style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />{isEdit ? "Saving..." : "Creating..."}</>
-              ) : (isEdit ? "✓ Save Changes" : "✓ Create Cupboard")}
+              {loading ? <><div style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />{isEdit ? "Saving..." : "Creating..."}</> : (isEdit ? "✓ Save Changes" : "✓ Create Cupboard")}
             </button>
           </div>
         </div>
@@ -224,8 +200,9 @@ function CupboardForm({ cupboard, onClose, onSuccess }) {
 ══════════════════════ */
 function PlaceForm({ place, cupboard, onClose, onSuccess }) {
   const isEdit = !!place;
-  const [loading, setLoading] = useState(false);
-  const [errors,  setErrors]  = useState({});
+  const [loading,  setLoading]  = useState(false);
+  const [errors,   setErrors]   = useState({});
+  const [apiError, setApiError] = useState("");
   const [form, setForm] = useState({
     name:     place?.name     || "",
     capacity: place?.capacity || 10,
@@ -234,20 +211,36 @@ function PlaceForm({ place, cupboard, onClose, onSuccess }) {
   const set = (key, val) => {
     setForm(p => ({ ...p, [key]: val }));
     if (errors[key]) setErrors(p => ({ ...p, [key]: "" }));
+    setApiError("");
   };
 
   const validate = () => {
     const e = {};
-    if (!form.name.trim())    e.name     = "Place name is required";
-    if (form.capacity < 1)    e.capacity = "Capacity must be at least 1";
+    if (!form.name.trim()) e.name     = "Place name is required";
+    if (form.capacity < 1) e.capacity = "Capacity must be at least 1";
     return e;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
     setLoading(true);
-    setTimeout(() => { setLoading(false); onSuccess(form); }, 900);
+    setApiError("");
+    try {
+      if (isEdit) {
+        await CupboardService.updatePlace(place.id, form);
+      } else {
+        await CupboardService.createPlace(cupboard.id, form);
+      }
+      onSuccess();
+    } catch (err) {
+      const msg = err.response?.data?.message
+        || Object.values(err.response?.data?.errors || {})[0]?.[0]
+        || "Something went wrong.";
+      setApiError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -263,23 +256,16 @@ function PlaceForm({ place, cupboard, onClose, onSuccess }) {
         boxShadow: "0 32px 80px rgba(0,0,0,0.2)",
         animation: "slideUp 0.25s ease"
       }}>
-        {/* Header */}
         <div style={{
           padding: "22px 24px 18px", borderBottom: "1px solid var(--border)",
           display: "flex", alignItems: "center", gap: "14px"
         }}>
-          <div style={{
-            width: "44px", height: "44px", borderRadius: "11px",
-            background: cupboard.bg, fontSize: "20px",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
-          }}>📍</div>
+          <div style={{ width: "44px", height: "44px", borderRadius: "11px", background: cupboard.bg_color, fontSize: "20px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>📍</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "16px", color: "var(--text-primary)" }}>
               {isEdit ? "Edit Place" : "Add New Place"}
             </div>
-            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-              In {cupboard.name}
-            </div>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>In {cupboard.name}</div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "22px", lineHeight: 1 }}>×</button>
         </div>
@@ -295,49 +281,31 @@ function PlaceForm({ place, cupboard, onClose, onSuccess }) {
 
           <Field label="Capacity (max items)" error={errors.capacity}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <button onClick={() => set("capacity", Math.max(1, form.capacity - 1))} style={{
-                width: "38px", height: "38px", borderRadius: "9px",
-                border: "1.5px solid var(--border)", background: "var(--surface2)",
-                fontSize: "18px", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: "var(--text-primary)", fontWeight: 700
-              }}>−</button>
-              <div style={{
-                flex: 1, textAlign: "center",
-                fontFamily: "'Syne',sans-serif", fontWeight: 800,
-                fontSize: "24px", color: "var(--text-primary)"
-              }}>{form.capacity}</div>
-              <button onClick={() => set("capacity", form.capacity + 1)} style={{
-                width: "38px", height: "38px", borderRadius: "9px",
-                border: "1.5px solid var(--border)", background: "var(--surface2)",
-                fontSize: "18px", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: "var(--text-primary)", fontWeight: 700
-              }}>+</button>
+              <button onClick={() => set("capacity", Math.max(1, form.capacity - 1))} style={{ width: "38px", height: "38px", borderRadius: "9px", border: "1.5px solid var(--border)", background: "var(--surface2)", fontSize: "18px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-primary)", fontWeight: 700 }}>−</button>
+              <div style={{ flex: 1, textAlign: "center", fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "24px", color: "var(--text-primary)" }}>{form.capacity}</div>
+              <button onClick={() => set("capacity", form.capacity + 1)} style={{ width: "38px", height: "38px", borderRadius: "9px", border: "1.5px solid var(--border)", background: "var(--surface2)", fontSize: "18px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-primary)", fontWeight: 700 }}>+</button>
             </div>
           </Field>
 
+          {apiError && (
+            <div style={{ background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", fontSize: "13px", color: "#ef4444" }}>
+              ⚠️ {apiError}
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
-            <button onClick={onClose} style={{
-              flex: 1, padding: "12px", background: "var(--surface2)",
-              border: "1.5px solid var(--border)", borderRadius: "10px",
-              cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-              fontSize: "13px", color: "var(--text-secondary)"
-            }}>Cancel</button>
+            <button onClick={onClose} style={{ flex: 1, padding: "12px", background: "var(--surface2)", border: "1.5px solid var(--border)", borderRadius: "10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", fontSize: "13px", color: "var(--text-secondary)" }}>Cancel</button>
             <button onClick={handleSubmit} disabled={loading} style={{
               flex: 2, padding: "12px", background: loading ? cupboard.color : "#0f0f1a",
               color: "#fff", border: "none", borderRadius: "10px",
-              fontFamily: "'Syne',sans-serif", fontWeight: 700,
-              fontSize: "13px", cursor: loading ? "not-allowed" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-              transition: "background 0.15s"
+              fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "13px",
+              cursor: loading ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "background 0.15s"
             }}
               onMouseEnter={e => { if (!loading) e.currentTarget.style.background = cupboard.color; }}
               onMouseLeave={e => { if (!loading) e.currentTarget.style.background = "#0f0f1a"; }}
             >
-              {loading ? (
-                <><div style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />{isEdit ? "Saving..." : "Adding..."}</>
-              ) : (isEdit ? "✓ Save Changes" : "✓ Add Place")}
+              {loading ? <><div style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />{isEdit ? "Saving..." : "Adding..."}</> : (isEdit ? "✓ Save Changes" : "✓ Add Place")}
             </button>
           </div>
         </div>
@@ -349,7 +317,20 @@ function PlaceForm({ place, cupboard, onClose, onSuccess }) {
 
 /* ── Delete Confirm ── */
 function DeleteConfirm({ label, warning, onClose, onConfirm }) {
-  const [loading, setLoading] = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [apiError, setApiError] = useState("");
+
+  const handle = async () => {
+    setLoading(true);
+    setApiError("");
+    try {
+      await onConfirm();
+    } catch (err) {
+      setApiError(err.response?.data?.message || "Failed to delete. Please try again.");
+      setLoading(false);
+    }
+  };
+
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
@@ -367,13 +348,18 @@ function DeleteConfirm({ label, warning, onClose, onConfirm }) {
         <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "18px", color: "var(--text-primary)", marginBottom: "8px" }}>Delete {label}?</div>
         <div style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.7 }}>This action cannot be undone.</div>
         {warning && (
-          <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "10px", padding: "10px 14px", marginBottom: "20px", fontSize: "12px", color: "#991b1b", lineHeight: 1.6 }}>
+          <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px", fontSize: "12px", color: "#991b1b", lineHeight: 1.6 }}>
             ⚠️ {warning}
+          </div>
+        )}
+        {apiError && (
+          <div style={{ background: "rgba(239,68,68,0.08)", border: "1.5px solid rgba(239,68,68,0.3)", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", fontSize: "12px", color: "#ef4444" }}>
+            ⚠️ {apiError}
           </div>
         )}
         <div style={{ display: "flex", gap: "10px" }}>
           <button onClick={onClose} style={{ flex: 1, padding: "12px", background: "var(--surface2)", border: "1.5px solid var(--border)", borderRadius: "10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif", fontSize: "13px", color: "var(--text-secondary)" }}>Cancel</button>
-          <button onClick={() => { setLoading(true); setTimeout(() => { setLoading(false); onConfirm(); }, 800); }} disabled={loading} style={{
+          <button onClick={handle} disabled={loading} style={{
             flex: 2, padding: "12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: "10px",
             fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "13px",
             cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.8 : 1,
@@ -392,70 +378,57 @@ function DeleteConfirm({ label, warning, onClose, onConfirm }) {
    MAIN STORAGE MANAGEMENT PAGE
 ══════════════════════════════════════════ */
 export default function StorageManagement() {
-  const [cupboards,     setCupboards]     = useState(INITIAL_CUPBOARDS);
-  const [selectedCup,   setSelectedCup]   = useState(null);
-  const [showCupForm,   setShowCupForm]   = useState(false);
-  const [editCupboard,  setEditCupboard]  = useState(null);
-  const [deleteCupboard,setDeleteCupboard]= useState(null);
-  const [showPlaceForm, setShowPlaceForm] = useState(false);
-  const [editPlace,     setEditPlace]     = useState(null);
-  const [deletePlace,   setDeletePlace]   = useState(null);
+  const [cupboards,      setCupboards]      = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [selectedCup,    setSelectedCup]    = useState(null);
+  const [showCupForm,    setShowCupForm]    = useState(false);
+  const [editCupboard,   setEditCupboard]   = useState(null);
+  const [deleteCupboard, setDeleteCupboard] = useState(null);
+  const [showPlaceForm,  setShowPlaceForm]  = useState(false);
+  const [editPlace,      setEditPlace]      = useState(null);
+  const [deletePlace,    setDeletePlace]    = useState(null);
 
+  // ── Map API cupboard → UI cupboard ──
+  const mapCupboard = (c) => ({
+    id:          c.id,
+    name:        c.name,
+    code:        c.code,
+    description: c.description || "",
+    location:    c.location    || "",
+    color:       c.color       || "#6366f1",
+    bg_color:    c.bg_color    || "#ede9fe",
+    places: (c.places || []).map(p => ({
+      id:        p.id,
+      name:      p.name,
+      capacity:  p.capacity,
+      itemCount: p.item_count || 0,
+    })),
+  });
+
+  // ── Fetch cupboards ──
+  const fetchCupboards = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await CupboardService.getAll();
+      const mapped = (data || []).map(mapCupboard);
+      setCupboards(mapped);
+      // Keep selectedCup in sync after refresh
+      setSelectedCup(prev =>
+        prev ? mapped.find(c => c.id === prev.id) || null : null
+      );
+    } catch (err) {
+      console.error("Failed to fetch cupboards:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchCupboards(); }, [fetchCupboards]);
+
+  // ── Derived stats ──
   const totalPlaces = cupboards.reduce((a, c) => a + c.places.length, 0);
   const totalItems  = cupboards.reduce((a, c) => a + c.places.reduce((b, p) => b + p.itemCount, 0), 0);
-
-  /* ── Cupboard CRUD ── */
-  const handleCreateCupboard = (form) => {
-    const newCup = { id: Date.now(), ...form, places: [] };
-    setCupboards(p => [...p, newCup]);
-    setShowCupForm(false);
-  };
-
-  const handleEditCupboard = (form) => {
-    setCupboards(p => p.map(c => c.id === editCupboard.id ? { ...c, ...form } : c));
-    setEditCupboard(null);
-    if (selectedCup?.id === editCupboard.id) setSelectedCup(prev => ({ ...prev, ...form }));
-  };
-
-  const handleDeleteCupboard = () => {
-    setCupboards(p => p.filter(c => c.id !== deleteCupboard.id));
-    if (selectedCup?.id === deleteCupboard.id) setSelectedCup(null);
-    setDeleteCupboard(null);
-  };
-
-  /* ── Place CRUD ── */
-  const handleCreatePlace = (form) => {
-    const newPlace = { id: Date.now(), name: form.name, capacity: form.capacity, itemCount: 0 };
-    setCupboards(p => p.map(c =>
-      c.id === selectedCup.id ? { ...c, places: [...c.places, newPlace] } : c
-    ));
-    setSelectedCup(p => ({ ...p, places: [...p.places, newPlace] }));
-    setShowPlaceForm(false);
-  };
-
-  const handleEditPlace = (form) => {
-    const updated = { ...editPlace, name: form.name, capacity: form.capacity };
-    setCupboards(p => p.map(c =>
-      c.id === selectedCup.id
-        ? { ...c, places: c.places.map(pl => pl.id === editPlace.id ? updated : pl) }
-        : c
-    ));
-    setSelectedCup(p => ({ ...p, places: p.places.map(pl => pl.id === editPlace.id ? updated : pl) }));
-    setEditPlace(null);
-  };
-
-  const handleDeletePlace = () => {
-    setCupboards(p => p.map(c =>
-      c.id === selectedCup.id
-        ? { ...c, places: c.places.filter(pl => pl.id !== deletePlace.id) }
-        : c
-    ));
-    setSelectedCup(p => ({ ...p, places: p.places.filter(pl => pl.id !== deletePlace.id) }));
-    setDeletePlace(null);
-  };
-
-  /* ── Sync selectedCup with cupboards state ── */
-  const liveCup = selectedCup ? cupboards.find(c => c.id === selectedCup.id) || selectedCup : null;
+  const liveCup     = selectedCup ? cupboards.find(c => c.id === selectedCup.id) || null : null;
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease forwards" }}>
@@ -484,9 +457,9 @@ export default function StorageManagement() {
       {/* Summary Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "14px", marginBottom: "24px" }}>
         {[
-          { label: "Cupboards", value: cupboards.length, icon: "🗄️", bg: "#ede9fe" },
-          { label: "Places",    value: totalPlaces,      icon: "📍", bg: "#d1fae5" },
-          { label: "Items Stored", value: totalItems,    icon: "📦", bg: "#fef3c7" },
+          { label: "Cupboards",    value: cupboards.length, icon: "🗄️", bg: "#ede9fe" },
+          { label: "Places",       value: totalPlaces,      icon: "📍", bg: "#d1fae5" },
+          { label: "Items Stored", value: totalItems,       icon: "📦", bg: "#fef3c7" },
         ].map((s, i) => (
           <div key={i} style={{
             background: "var(--surface)", border: "1.5px solid var(--border)",
@@ -496,7 +469,9 @@ export default function StorageManagement() {
           }}>
             <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: s.bg, fontSize: "18px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{s.icon}</div>
             <div>
-              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "26px", color: "var(--text-primary)", lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "26px", color: "var(--text-primary)", lineHeight: 1 }}>
+                {loading ? "…" : s.value}
+              </div>
               <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.8px", marginTop: "3px" }}>{s.label}</div>
             </div>
           </div>
@@ -511,61 +486,56 @@ export default function StorageManagement() {
           <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "10px" }}>
             Cupboards ({cupboards.length})
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {cupboards.map((cup, i) => (
-              <div key={cup.id} style={{
-                background: liveCup?.id === cup.id ? cup.bg : "var(--surface)",
-                border: `1.5px solid ${liveCup?.id === cup.id ? cup.color : "var(--border)"}`,
-                borderRadius: "14px", padding: "14px 16px",
-                cursor: "pointer", transition: "all 0.2s",
-                animation: `fadeUp 0.35s ease ${i * 0.08}s forwards`, opacity: 0
-              }}
-                onClick={() => setSelectedCup(cup)}
-                onMouseEnter={e => { if (liveCup?.id !== cup.id) { e.currentTarget.style.borderColor = cup.color; e.currentTarget.style.background = cup.bg + "60"; }}}
-                onMouseLeave={e => { if (liveCup?.id !== cup.id) { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                  <div style={{ width: "34px", height: "34px", borderRadius: "9px", background: liveCup?.id === cup.id ? cup.color : cup.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0 }}>🗄️</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>{cup.name}</div>
-                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{cup.code} · {cup.location}</div>
+
+          {loading ? (
+            <div style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)", fontSize: "13px" }}>Loading...</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {cupboards.map((cup, i) => (
+                <div key={cup.id} style={{
+                  background: liveCup?.id === cup.id ? cup.bg_color : "var(--surface)",
+                  border: `1.5px solid ${liveCup?.id === cup.id ? cup.color : "var(--border)"}`,
+                  borderRadius: "14px", padding: "14px 16px",
+                  cursor: "pointer", transition: "all 0.2s",
+                  animation: `fadeUp 0.35s ease ${i * 0.08}s forwards`, opacity: 0
+                }}
+                  onClick={() => setSelectedCup(cup)}
+                  onMouseEnter={e => { if (liveCup?.id !== cup.id) { e.currentTarget.style.borderColor = cup.color; e.currentTarget.style.background = cup.bg_color + "60"; }}}
+                  onMouseLeave={e => { if (liveCup?.id !== cup.id) { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface)"; }}}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                    <div style={{ width: "34px", height: "34px", borderRadius: "9px", background: liveCup?.id === cup.id ? cup.color : cup.bg_color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0 }}>🗄️</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "13px", color: "var(--text-primary)" }}>{cup.name}</div>
+                      <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>{cup.code} · {cup.location}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      {cup.places.length} place{cup.places.length !== 1 ? "s" : ""}
+                    </span>
+                    <div style={{ display: "flex", gap: "4px" }} onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setEditCupboard(cup)} style={{ padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "transparent", cursor: "pointer", fontSize: "11px", color: "var(--text-muted)", transition: "all 0.15s" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "#ede9fe"; e.currentTarget.style.color = "#6366f1"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
+                      >✏️</button>
+                      <button onClick={() => setDeleteCupboard(cup)} style={{ padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", background: "transparent", cursor: "pointer", fontSize: "11px", color: "var(--text-muted)", transition: "all 0.15s" }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.color = "#ef4444"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
+                      >🗑️</button>
+                    </div>
                   </div>
                 </div>
+              ))}
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                    {cup.places.length} place{cup.places.length !== 1 ? "s" : ""}
-                  </span>
-                  {/* Edit / Delete inline */}
-                  <div style={{ display: "flex", gap: "4px" }} onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setEditCupboard(cup)} style={{
-                      padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)",
-                      background: "transparent", cursor: "pointer", fontSize: "11px",
-                      color: "var(--text-muted)", transition: "all 0.15s"
-                    }}
-                      onMouseEnter={e => { e.currentTarget.style.background = "#ede9fe"; e.currentTarget.style.color = "#6366f1"; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
-                    >✏️</button>
-                    <button onClick={() => setDeleteCupboard(cup)} style={{
-                      padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)",
-                      background: "transparent", cursor: "pointer", fontSize: "11px",
-                      color: "var(--text-muted)", transition: "all 0.15s"
-                    }}
-                      onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.color = "#ef4444"; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-muted)"; }}
-                    >🗑️</button>
-                  </div>
+              {cupboards.length === 0 && (
+                <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--text-muted)", background: "var(--surface)", borderRadius: "14px", border: "1.5px dashed var(--border)" }}>
+                  <div style={{ fontSize: "28px", marginBottom: "8px" }}>🗄️</div>
+                  <div style={{ fontSize: "13px" }}>No cupboards yet.<br />Add one to get started.</div>
                 </div>
-              </div>
-            ))}
-
-            {cupboards.length === 0 && (
-              <div style={{ textAlign: "center", padding: "32px 16px", color: "var(--text-muted)", background: "var(--surface)", borderRadius: "14px", border: "1.5px dashed var(--border)" }}>
-                <div style={{ fontSize: "28px", marginBottom: "8px" }}>🗄️</div>
-                <div style={{ fontSize: "13px" }}>No cupboards yet.<br />Add one to get started.</div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right — Places detail */}
@@ -585,7 +555,7 @@ export default function StorageManagement() {
             <div style={{ animation: "fadeUp 0.3s ease forwards" }}>
               {/* Cupboard header */}
               <div style={{
-                background: liveCup.bg, border: `1.5px solid ${liveCup.color}30`,
+                background: liveCup.bg_color, border: `1.5px solid ${liveCup.color}30`,
                 borderRadius: "16px", padding: "18px 22px", marginBottom: "16px",
                 display: "flex", alignItems: "center", gap: "16px"
               }}>
@@ -598,8 +568,7 @@ export default function StorageManagement() {
                   display: "flex", alignItems: "center", gap: "6px",
                   padding: "9px 16px", background: liveCup.color, color: "#fff",
                   border: "none", borderRadius: "9px", cursor: "pointer",
-                  fontFamily: "'Syne',sans-serif", fontWeight: 700,
-                  fontSize: "12px", transition: "opacity 0.15s"
+                  fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "12px", transition: "opacity 0.15s"
                 }}
                   onMouseEnter={e => e.currentTarget.style.opacity = "0.85"}
                   onMouseLeave={e => e.currentTarget.style.opacity = "1"}
@@ -609,17 +578,12 @@ export default function StorageManagement() {
                 </button>
               </div>
 
-              {/* Places list */}
               <div style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "10px" }}>
                 Places ({liveCup.places.length})
               </div>
 
               {liveCup.places.length === 0 ? (
-                <div style={{
-                  textAlign: "center", padding: "48px 20px",
-                  background: "var(--surface)", borderRadius: "14px",
-                  border: "1.5px dashed var(--border)", color: "var(--text-muted)"
-                }}>
+                <div style={{ textAlign: "center", padding: "48px 20px", background: "var(--surface)", borderRadius: "14px", border: "1.5px dashed var(--border)", color: "var(--text-muted)" }}>
                   <div style={{ fontSize: "30px", marginBottom: "10px" }}>📍</div>
                   <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "15px", color: "var(--text-primary)", marginBottom: "6px" }}>No places yet</div>
                   <div style={{ fontSize: "13px", marginBottom: "16px" }}>Add shelves, drawers or sections inside {liveCup.name}</div>
@@ -634,7 +598,6 @@ export default function StorageManagement() {
                   {liveCup.places.map((place, pi) => {
                     const usedPct = place.capacity > 0 ? Math.round((place.itemCount / place.capacity) * 100) : 0;
                     const isFull  = usedPct >= 100;
-
                     return (
                       <div key={place.id} style={{
                         background: "var(--surface)", border: "1.5px solid var(--border)",
@@ -646,15 +609,12 @@ export default function StorageManagement() {
                         onMouseEnter={e => e.currentTarget.style.borderColor = liveCup.color}
                         onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border)"}
                       >
-                        <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: liveCup.bg, fontSize: "18px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>📍</div>
-
+                        <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: liveCup.bg_color, fontSize: "18px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>📍</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
                             <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "14px", color: "var(--text-primary)" }}>{place.name}</span>
                             {isFull && <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "100px", background: "#fee2e2", color: "#ef4444", fontWeight: 600 }}>FULL</span>}
                           </div>
-
-                          {/* Capacity bar */}
                           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                             <div style={{ flex: 1, height: "5px", background: "var(--border)", borderRadius: "100px", overflow: "hidden" }}>
                               <div style={{
@@ -668,23 +628,12 @@ export default function StorageManagement() {
                             </span>
                           </div>
                         </div>
-
-                        {/* Actions */}
                         <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-                          <button onClick={() => setEditPlace(place)} style={{
-                            padding: "6px 12px", borderRadius: "7px",
-                            border: "1.5px solid var(--border)", background: "var(--surface)",
-                            cursor: "pointer", fontSize: "12px", fontWeight: 500,
-                            color: "var(--text-secondary)", transition: "all 0.15s"
-                          }}
+                          <button onClick={() => setEditPlace(place)} style={{ padding: "6px 12px", borderRadius: "7px", border: "1.5px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: "12px", fontWeight: 500, color: "var(--text-secondary)", transition: "all 0.15s" }}
                             onMouseEnter={e => { e.currentTarget.style.background = "#ede9fe"; e.currentTarget.style.borderColor = "#6366f1"; e.currentTarget.style.color = "#6366f1"; }}
                             onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
                           >✏️ Edit</button>
-                          <button onClick={() => setDeletePlace(place)} style={{
-                            padding: "6px 10px", borderRadius: "7px",
-                            border: "1.5px solid var(--border)", background: "var(--surface)",
-                            cursor: "pointer", fontSize: "13px", transition: "all 0.15s"
-                          }}
+                          <button onClick={() => setDeletePlace(place)} style={{ padding: "6px 10px", borderRadius: "7px", border: "1.5px solid var(--border)", background: "var(--surface)", cursor: "pointer", fontSize: "13px", transition: "all 0.15s" }}
                             onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#ef4444"; }}
                             onMouseLeave={e => { e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.borderColor = "var(--border)"; }}
                           >🗑️</button>
@@ -700,24 +649,40 @@ export default function StorageManagement() {
       </div>
 
       {/* ── Modals ── */}
-      {showCupForm && <CupboardForm onClose={() => setShowCupForm(false)} onSuccess={handleCreateCupboard} />}
-      {editCupboard && <CupboardForm cupboard={editCupboard} onClose={() => setEditCupboard(null)} onSuccess={handleEditCupboard} />}
+      {showCupForm && (
+        <CupboardForm onClose={() => setShowCupForm(false)} onSuccess={() => { setShowCupForm(false); fetchCupboards(); }} />
+      )}
+      {editCupboard && (
+        <CupboardForm cupboard={editCupboard} onClose={() => setEditCupboard(null)} onSuccess={() => { setEditCupboard(null); fetchCupboards(); }} />
+      )}
       {deleteCupboard && (
         <DeleteConfirm
           label={`"${deleteCupboard.name}"`}
           warning={deleteCupboard.places.length > 0 ? `This will also delete all ${deleteCupboard.places.length} place(s) inside it. Items must be relocated first.` : null}
           onClose={() => setDeleteCupboard(null)}
-          onConfirm={handleDeleteCupboard}
+          onConfirm={async () => {
+            await CupboardService.delete(deleteCupboard.id);
+            setDeleteCupboard(null);
+            fetchCupboards();
+          }}
         />
       )}
-      {showPlaceForm && liveCup && <PlaceForm cupboard={liveCup} onClose={() => setShowPlaceForm(false)} onSuccess={handleCreatePlace} />}
-      {editPlace && liveCup && <PlaceForm place={editPlace} cupboard={liveCup} onClose={() => setEditPlace(null)} onSuccess={handleEditPlace} />}
+      {showPlaceForm && liveCup && (
+        <PlaceForm cupboard={liveCup} onClose={() => setShowPlaceForm(false)} onSuccess={() => { setShowPlaceForm(false); fetchCupboards(); }} />
+      )}
+      {editPlace && liveCup && (
+        <PlaceForm place={editPlace} cupboard={liveCup} onClose={() => setEditPlace(null)} onSuccess={() => { setEditPlace(null); fetchCupboards(); }} />
+      )}
       {deletePlace && (
         <DeleteConfirm
           label={`"${deletePlace.name}"`}
           warning={deletePlace.itemCount > 0 ? `This place has ${deletePlace.itemCount} item(s) currently assigned to it.` : null}
           onClose={() => setDeletePlace(null)}
-          onConfirm={handleDeletePlace}
+          onConfirm={async () => {
+            await CupboardService.deletePlace(deletePlace.id);
+            setDeletePlace(null);
+            fetchCupboards();
+          }}
         />
       )}
 
