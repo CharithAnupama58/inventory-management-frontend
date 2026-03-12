@@ -47,15 +47,15 @@ const mapLog = (log) => ({
   action:      log.action,
   entity:      log.entity_type  || "System",
   entityName:  log.entity_name  || "—",
-  performedBy: log.performed_by_name || log.user?.name || "System",
-  role:        log.performed_by_role || log.user?.role || "admin",
+  performedBy: log.performed_by?.name || log.performed_by_name || "System",
+  role:        log.performed_by?.role || log.performed_by_role || "admin",
   timestamp:   log.created_at,
   details:     {
     ...(log.previous_value ? { previousValue: JSON.stringify(log.previous_value) } : {}),
     ...(log.new_value       ? { newValue:      JSON.stringify(log.new_value)       } : {}),
     description: log.description || log.action,
   },
-  rawDetails: log.new_value || log.previous_value || {},
+  rawDetails: log.new_value ?? log.previous_value ?? {},
 });
 
 /* ── Detail Modal ── */

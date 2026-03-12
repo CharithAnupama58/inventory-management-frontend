@@ -14,7 +14,6 @@ const PAGE_TITLES = {
 
 export default function MainLayout({ children, defaultPage = "dashboard" }) {
   const [activePage, setActivePage] = useState(defaultPage);
-  console.log(activePage);
 
   // Allow children to receive activePage so they can render the right content
   const childWithPage = typeof children === "function"
@@ -30,7 +29,7 @@ export default function MainLayout({ children, defaultPage = "dashboard" }) {
         <Sidebar activePage={activePage} onNavigate={setActivePage} />
 
         <div className="shell-main">
-          <Header title={PAGE_TITLES[activePage] || "Dashboard"} />
+          <Header title={PAGE_TITLES[activePage] || "Dashboard"} onNavigate={setActivePage} />
 
           <main className="page-content">
             {childWithPage}
