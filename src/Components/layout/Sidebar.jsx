@@ -1,5 +1,7 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import BorrowService from "../../services/borrowService";
 
 const Icons = {
   Home: () => (
@@ -50,25 +52,53 @@ const Icons = {
   ),
 };
 
-const ADMIN_NAV = [
-  { id: "dashboard", Icon: Icons.Home,    label: "Dashboard" },
-  { id: "inventory", Icon: Icons.Box,     label: "Inventory" },
-  { id: "borrow",    Icon: Icons.Arrow,   label: "Borrow / Return", badge: "3" },
-  { id: "users",     Icon: Icons.Users,   label: "User Management" },
-  { id: "storage",   Icon: Icons.Storage, label: "Storage" },
-  { id: "audit",     Icon: Icons.Audit,   label: "Audit Log" },
-];
-
-const STAFF_NAV = [
-  { id: "dashboard", Icon: Icons.Home,    label: "Dashboard" },
-  { id: "inventory", Icon: Icons.Box,     label: "Browse Inventory" },
-  { id: "borrow",    Icon: Icons.Arrow,   label: "My Borrows", badge: "2" },
-  { id: "storage",   Icon: Icons.Storage, label: "Storage Map" },
-];
-
 export default function Sidebar({ activePage, onNavigate }) {
   const navigate = useNavigate();
-  const { user, logout, isAdmin } = useAuth();  // ← replace localStorage
+  const { user, logout, isAdmin } = useAuth();
+
+  const [borrowCount, setBorrowCount] = useState(null);
+
+  /* ── Fetch real borrow count on mount + every 60s ── */
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (isAdmin) {
+          // Admin: total active (borrowed) borrows across all users
+          const res = await BorrowService.getAll({ status: "borrowed", per_page: 1 });
+          const active = res.meta?.counts?.active ?? res.meta?.total ?? 0;
+          setBorrowCount(active > 0 ? active : null);
+        } else {
+          // Staff: only their own active borrows
+          const res = await BorrowService.getMyBorrows({ per_page: 1 });
+          const total = res.meta?.total ?? (res.data?.length || 0);
+          setBorrowCount(total > 0 ? total : null);
+        }
+      } catch (e) {
+        console.error("Sidebar borrow count error:", e);
+      }
+    };
+
+    load();
+    const interval = setInterval(load, 60_000);
+    return () => clearInterval(interval);
+  }, [isAdmin]);
+
+  const ADMIN_NAV = [
+    { id: "dashboard",   Icon: Icons.Home,    label: "Dashboard" },
+    { id: "inventory",   Icon: Icons.Box,     label: "Inventory" },
+    { id: "borrow",      Icon: Icons.Arrow,   label: "Borrow / Return", badge: borrowCount },
+    { id: "users",       Icon: Icons.Users,   label: "User Management" },
+    { id: "storage",     Icon: Icons.Storage, label: "Storage" },
+    { id: "audit",       Icon: Icons.Audit,   label: "Audit Log" },
+  ];
+
+  const STAFF_NAV = [
+    { id: "dashboard",   Icon: Icons.Home,    label: "Dashboard" },
+    { id: "inventory",   Icon: Icons.Box,     label: "Browse Inventory" },
+    { id: "borrow",      Icon: Icons.Arrow,   label: "My Borrows", badge: borrowCount },
+    { id: "storage",     Icon: Icons.Storage, label: "Storage Map" },
+  ];
+
   const navItems = isAdmin ? ADMIN_NAV : STAFF_NAV;
 
   const handleLogout = async () => {
@@ -113,7 +143,9 @@ export default function Sidebar({ activePage, onNavigate }) {
           >
             <Icon />
             {label}
-            {badge && <span className="nav-badge">{badge}</span>}
+            {badge != null && (
+              <span className="nav-badge">{badge > 99 ? "99+" : badge}</span>
+            )}
           </div>
         ))}
       </nav>
